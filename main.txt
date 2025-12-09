@@ -1,0 +1,2334 @@
+import json
+import os
+import uuid
+from datetime import datetime, timedelta
+
+from flask import Flask, jsonify, request, send_file
+from flask_cors import CORS
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+CORS(app)  # Habilitar CORS para el frontend React/Angular
+
+# ------------------------------
+# Configuración
+# ------------------------------
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['UPLOAD_FOLDER'] = './uploads'  # Temporal - usar BlobStorage/S3 en producción
+app.config['ALLOWED_EXTENSIONS'] = {'pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'}
+
+# ------------------------------
+# Fake In-Memory Data (Temporal)
+# TODO: Reemplazar con PostgreSQL + SQLAlchemy
+# ------------------------------
+USERS = {}  # DB: tabla 'usuarios'
+REQUESTS = {}  # DB: tabla 'solicitudes'
+CATALOGO_SERVICIOS = {}  # DB: tabla 'catalogo_servicios'
+REQUISITOS = {}  # DB: tabla 'requisitos_por_servicio'
+HISTORIAL_ACCIONES = []  # DB: tabla 'auditoria'
+NOTIFICACIONES = {}  # DB: tabla 'notificaciones'
+DOCUMENTOS = {}  # DB: tabla 'documentos' + BlobStorage/S3
+CERTIFICADOS = {}  # DB: tabla 'certificados'
+
+# ------------------------------
+# Tipos de Servicios (Catálogo)
+# ------------------------------
+TIPOS_SERVICIO = {
+    "CLASE_A": "Certificado de Inscripción de Drogas Controladas Clase A",
+    "CLASE_B_PRIVADO": "Certificado de Inscripción Clase B - Establecimientos Privados",
+    "CLASE_B_PUBLICO": "Certificado de Inscripción Clase B - Hospitales Públicos",
+    "IMPORTACION_MATERIA_PRIMA": "Permiso de Importación de Materia Prima",
+    "IMPORTACION_MEDICAMENTOS": "Permiso de Importación de Medicamentos"
+}
+
+# Estados del flujo de trabajo
+ESTADOS_FLUJO = [
+    "PENDIENTE_PAGO",  # Usuario debe pagar (flag para futuro)
+    "EN_REVISION_VUS",  # Ventanilla Única revisa cumplimiento formal
+    "DEVUELTO_VUS",  # No cumple requisitos iniciales
+    "EN_EVALUACION_UPC",  # Técnico UPC evalúa
+    "DEVUELTO_UPC",  # Técnico devuelve para correcciones
+    "RECHAZADO_UPC",  # Técnico rechaza - necesita firma Dirección
+    "PENDIENTE_FIRMA_RECHAZO",  # Esperando firma de comunicación de rechazo
+    "RECHAZADO_FINAL",  # Rechazo firmado por Dirección
+    "APROBADO_UPC",  # Aprobado por técnico
+    "PENDIENTE_FIRMA_DIRECCION",  # Esperando firma Dirección
+    "FIRMADO_DIRECCION",  # Firmado por Dirección
+    "EN_DNCD",  # Enviado a DNCD para verificación
+    "APROBADO_DNCD",  # DNCD aprueba y firma
+    "LISTO_RETIRO",  # Usuario puede retirar certificado
+    "ENTREGADO",  # Certificado entregado
+    "CANCELADO"  # Solicitud cancelada
+]
+
+# Roles del sistema (RF-2, Sección 2 del SRS)
+ROLES = {
+    "USUARIO": "Usuario/Solicitante",
+    "VUS": "Ventanilla Única de Servicios",
+    "TECNICO_UPC": "Técnico de Productos Controlados",
+    "ENCARGADO_UPC": "Encargado de Unidad UPC",
+    "DIRECCION": "Dirección/Management",
+    "DNCD": "DNCD - Verificación Externa",
+    "ADMIN": "Administrador del Sistema"
+}
+
+# ------------------------------
+# Helper Functions
+# ------------------------------
+def generate_id():
+    """Genera UUID único para entidades"""
+    return str(uuid.uuid4())
+
+def registrar_auditoria(solicitud_id, usuario_id, accion, detalles=""):
+    """
+    RF-4: Registro de auditoría y trazabilidad
+    TODO: Insertar en tabla 'auditoria' de PostgreSQL
+    Campos: id, solicitud_id, usuario_id, accion, detalles, timestamp
+    """
+    registro = {
+        "id": generate_id(),
+        "solicitud_id": solicitud_id,
+        "usuario_id": usuario_id,
+        "accion": accion,
+        "detalles": detalles,
+        "timestamp": datetime.now().isoformat()
+    }
+    HISTORIAL_ACCIONES.append(registro)
+    return registro
+
+def enviar_notificacion(usuario_id, tipo, mensaje, solicitud_id=None):
+    """
+    RF-1.5: Gestión de alertas mediante correo y plataforma
+    TODO: 
+    1. Insertar en tabla 'notificaciones' de PostgreSQL
+    2. Integrar con servicio de email (SendGrid, AWS SES, etc.)
+    3. Implementar notificaciones push en frontend
+    """
+    notif_id = generate_id()
+    notificacion = {
+        "id": notif_id,
+        "usuario_id": usuario_id,
+        "tipo": tipo,  # EMAIL, PLATAFORMA, AMBOS
+        "mensaje": mensaje,
+        "solicitud_id": solicitud_id,
+        "leida": False,
+        "fecha": datetime.now().isoformat()
+    }
+    
+    if usuario_id not in NOTIFICACIONES:
+        NOTIFICACIONES[usuario_id] = []
+    NOTIFICACIONES[usuario_id].append(notificacion)
+    
+    # TODO: Enviar email real
+    print(f"[EMAIL] Para {usuario_id}: {mensaje}")
+    
+    return notif_id
+
+def validar_archivo(filename):
+    """Valida extensión de archivo según configuración"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+def verificar_permisos(usuario_id, rol_requerido):
+    """
+    Verifica que el usuario tenga el rol necesario
+    TODO: Consultar tabla 'usuarios' en PostgreSQL
+    SELECT rol FROM usuarios WHERE id = %s
+    """
+    if usuario_id not in USERS:
+        return False
+    return USERS[usuario_id].get("rol") == rol_requerido
+
+# ------------------------------
+# MÓDULO: AUTENTICACIÓN Y USUARIOS
+# ------------------------------
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """
+    Autenticación de usuarios
+    TODO: 
+    1. Consultar PostgreSQL: SELECT * FROM usuarios WHERE email = %s
+    2. Verificar password hash (bcrypt)
+    3. Generar JWT token con expiración
+    4. RNF: Autenticación robusta por roles
+    """
+    data = request.json
+    email = data.get("email")
+    password = data.get("password")
+    
+    # TODO: Verificar credenciales en DB
+    # user = db.query("SELECT * FROM usuarios WHERE email = %s", [email])
+    # if user and verify_password(password, user.password_hash):
+    #     token = generate_jwt(user.id, user.rol)
+    #     return jsonify({"token": token, "user": user_data})
+    
+    # Simulación temporal
+    for user_id, user in USERS.items():
+        if user.get("email") == email:
+            return jsonify({
+                "status": "ok",
+                "token": "fake_jwt_token_" + user_id,
+                "user": {
+                    "id": user_id,
+                    "name": user.get("name"),
+                    "email": user.get("email"),
+                    "rol": user.get("rol")
+                }
+            }), 200
+    
+    return jsonify({"error": "credenciales_invalidas"}), 401
+
+@app.route('/api/register', methods=['POST'])
+def register_user():
+    """
+    RF-1: Registro de usuarios (Profesionales y Empresariales)
+    TODO: 
+    1. Validar datos requeridos según tipo de usuario
+    2. Insertar en PostgreSQL: 
+       INSERT INTO usuarios (id, nombre, email, password_hash, rol, tipo_usuario, 
+                            datos_profesionales, datos_empresariales, fecha_registro)
+       VALUES (...)
+    3. Enviar email de confirmación
+    """
+    data = request.json
+    
+    # Validación de campos requeridos
+    campos_requeridos = ["name", "email", "password", "tipo_usuario"]
+    for campo in campos_requeridos:
+        if campo not in data:
+            return jsonify({"error": f"campo_requerido: {campo}"}), 400
+    
+    user_id = generate_id()
+    
+    # TODO: Hash password con bcrypt
+    # password_hash = bcrypt.hashpw(data["password"].encode(), bcrypt.gensalt())
+    
+    usuario = {
+        "id": user_id,
+        "name": data.get("name"),
+        "email": data.get("email"),
+        "password": data.get("password"),  # TODO: Almacenar hash, no texto plano
+        "rol": "USUARIO",  # Por defecto
+        "tipo_usuario": data.get("tipo_usuario"),  # PROFESIONAL, EMPRESARIAL
+        "documento_identidad": data.get("documento_identidad"),
+        "telefono": data.get("telefono"),
+        "direccion": data.get("direccion"),
+        # Para usuarios empresariales
+        "razon_social": data.get("razon_social"),
+        "rnc": data.get("rnc"),
+        "representante_legal": data.get("representante_legal"),
+        "fecha_registro": datetime.now().isoformat(),
+        "activo": True
+    }
+    
+    USERS[user_id] = usuario
+    
+    # Registrar auditoría
+    registrar_auditoria(None, user_id, "REGISTRO_USUARIO", f"Usuario {data.get('email')} registrado")
+    
+    # Enviar notificación de bienvenida
+    enviar_notificacion(
+        user_id,
+        "EMAIL",
+        f"Bienvenido {data.get('name')}. Su cuenta ha sido creada exitosamente."
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "user_id": user_id,
+        "mensaje": "Usuario registrado exitosamente"
+    }), 201
+
+@app.route('/api/users/<user_id>', methods=['GET'])
+def get_user(user_id):
+    """
+    Obtener datos de usuario
+    TODO: SELECT * FROM usuarios WHERE id = %s
+    """
+    if user_id not in USERS:
+        return jsonify({"error": "usuario_no_encontrado"}), 404
+    
+    user = USERS[user_id].copy()
+    user.pop("password", None)  # No enviar password
+    return jsonify(user), 200
+
+# ------------------------------
+# MÓDULO: CATÁLOGO DE SERVICIOS Y REQUISITOS
+# ------------------------------
+
+@app.route('/api/admin/catalogo', methods=['POST'])
+def crear_servicio_catalogo():
+    """
+    Administración del catálogo de servicios
+    TODO: 
+    1. Solo accesible por rol ADMIN
+    2. INSERT INTO catalogo_servicios (id, codigo, nombre, descripcion, 
+                                       costo, tiempo_estimado, activo)
+    RNF: Módulo de administración para actualizar sin modificar código
+    """
+    # TODO: Verificar rol ADMIN
+    
+    data = request.json
+    servicio_id = generate_id()
+    
+    servicio = {
+        "id": servicio_id,
+        "codigo": data.get("codigo"),  # CLASE_A, CLASE_B_PRIVADO, etc.
+        "nombre": data.get("nombre"),
+        "descripcion": data.get("descripcion"),
+        "costo": data.get("costo"),
+        "tiempo_estimado_dias": data.get("tiempo_estimado_dias"),
+        "activo": True,
+        "requisitos": data.get("requisitos", [])  # Lista de IDs de requisitos
+    }
+    
+    CATALOGO_SERVICIOS[servicio_id] = servicio
+    
+    return jsonify({
+        "status": "ok",
+        "servicio_id": servicio_id
+    }), 201
+
+@app.route('/api/catalogo', methods=['GET'])
+def listar_catalogo():
+    """
+    Listado público de servicios disponibles
+    TODO: SELECT * FROM catalogo_servicios WHERE activo = true
+    """
+    servicios_activos = {
+        k: v for k, v in CATALOGO_SERVICIOS.items() 
+        if v.get("activo", True)
+    }
+    return jsonify(servicios_activos), 200
+
+@app.route('/api/admin/requisitos', methods=['POST'])
+def crear_requisito():
+    """
+    Administrar requisitos por servicio (catálogo administrable)
+    TODO: INSERT INTO requisitos_por_servicio (id, servicio_id, nombre, 
+                                                descripcion, obligatorio, tipo_documento)
+    """
+    data = request.json
+    requisito_id = generate_id()
+    
+    requisito = {
+        "id": requisito_id,
+        "servicio_id": data.get("servicio_id"),
+        "nombre": data.get("nombre"),
+        "descripcion": data.get("descripcion"),
+        "obligatorio": data.get("obligatorio", True),
+        "tipo_documento": data.get("tipo_documento"),  # PDF, IMAGE, etc.
+        "orden": data.get("orden", 0)
+    }
+    
+    REQUISITOS[requisito_id] = requisito
+    
+    return jsonify({
+        "status": "ok",
+        "requisito_id": requisito_id
+    }), 201
+
+@app.route('/api/servicios/<servicio_id>/requisitos', methods=['GET'])
+def obtener_requisitos_servicio(servicio_id):
+    """
+    Obtener requisitos de un servicio específico
+    TODO: SELECT * FROM requisitos_por_servicio WHERE servicio_id = %s ORDER BY orden
+    """
+    requisitos_servicio = [
+        req for req in REQUISITOS.values()
+        if req.get("servicio_id") == servicio_id
+    ]
+    return jsonify(requisitos_servicio), 200
+
+# ------------------------------
+# MÓDULO: SOLICITUDES (RF-1)
+# ------------------------------
+
+@app.route('/api/solicitud', methods=['POST'])
+def submit_request():
+    """
+    RF-1.1: Usuario completa y deposita solicitud electrónicamente
+    TODO:
+    1. INSERT INTO solicitudes (id, usuario_id, tipo_servicio, estado, 
+                                fecha_creacion, pagado, monto)
+    2. Guardar documentos en BlobStorage/S3
+    3. INSERT INTO documentos (id, solicitud_id, nombre, ruta_storage, tipo, fecha_subida)
+    4. Validar que todos los requisitos obligatorios estén presentes
+    """
+    # Obtener datos del formulario
+    data = request.form
+    files = request.files
+    
+    # Validación de campos
+    if not data.get("user_id") or not data.get("tipo_servicio"):
+        return jsonify({"error": "campos_requeridos_faltantes"}), 400
+    
+    # Verificar que el usuario existe
+    # TODO: SELECT id FROM usuarios WHERE id = %s
+    if data.get("user_id") not in USERS:
+        return jsonify({"error": "usuario_no_encontrado"}), 404
+    
+    req_id = generate_id()
+    
+    # Crear solicitud
+    solicitud = {
+        "id": req_id,
+        "numero_expediente": f"EXP-{datetime.now().year}-{len(REQUESTS) + 1:05d}",
+        "user_id": data.get("user_id"),
+        "tipo_servicio": data.get("tipo_servicio"),
+        "estado": "EN_REVISION_VUS",  # Estado inicial según flujo
+        "fecha_creacion": datetime.now().isoformat(),
+        "fecha_actualizacion": datetime.now().isoformat(),
+        
+        # RF-1.1: Variable para identificar servicios pagados
+        "pagado": data.get("pagado", "false").lower() == "true",
+        "monto_pagado": data.get("monto_pagado", 0),
+        "metodo_pago": data.get("metodo_pago"),  # Preparado para integración con pasarela
+        "referencia_pago": data.get("referencia_pago"),
+        
+        # Datos específicos del servicio
+        "datos_formulario": json.loads(data.get("datos_formulario", "{}")),
+        
+        # Documentos adjuntos
+        "documentos": {},
+        
+        # Tracking del flujo
+        "asignado_a": None,  # ID del usuario que tiene la solicitud
+        "observaciones": [],
+        "historial_estados": [
+            {
+                "estado": "EN_REVISION_VUS",
+                "fecha": datetime.now().isoformat(),
+                "usuario": "SYSTEM"
+            }
+        ]
+    }
+    
+    # Procesar documentos adjuntos
+    # TODO: Guardar en BlobStorage/S3 en lugar de filesystem local
+    for key in files:
+        file = files[key]
+        if file and validar_archivo(file.filename):
+            filename = secure_filename(file.filename)
+            
+            # Generar nombre único
+            doc_id = generate_id()
+            extension = filename.rsplit('.', 1)[1].lower()
+            unique_filename = f"{req_id}_{doc_id}.{extension}"
+            
+            # TODO: Subir a BlobStorage/S3
+            # filepath = upload_to_blob_storage(file, unique_filename)
+            
+            # Simulación: guardar localmente
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(filepath)
+            
+            solicitud["documentos"][key] = {
+                "id": doc_id,
+                "nombre_original": filename,
+                "nombre_storage": unique_filename,
+                "ruta": filepath,
+                "tipo": key,  # tipo_requisito
+                "fecha_subida": datetime.now().isoformat()
+            }
+    
+    REQUESTS[req_id] = solicitud
+    
+    # Registrar auditoría (RF: Auditoría y Trazabilidad)
+    registrar_auditoria(
+        req_id,
+        data.get("user_id"),
+        "SOLICITUD_CREADA",
+        f"Tipo: {data.get('tipo_servicio')}"
+    )
+    
+    # RF-1.5: Notificar usuario
+    enviar_notificacion(
+        data.get("user_id"),
+        "AMBOS",
+        f"Su solicitud {solicitud['numero_expediente']} ha sido recibida y está en proceso de revisión.",
+        req_id
+    )
+    
+    # Notificar a VUS que hay nueva solicitud
+    # TODO: Obtener usuarios con rol VUS y notificarles
+    
+    return jsonify({
+        "status": "recibido",
+        "solicitud_id": req_id,
+        "numero_expediente": solicitud["numero_expediente"],
+        "mensaje": "Solicitud recibida exitosamente"
+    }), 201
+
+@app.route('/api/solicitud/<req_id>', methods=['GET'])
+def get_solicitud(req_id):
+    """
+    Consulta del estado de la solicitud
+    TODO: SELECT * FROM solicitudes WHERE id = %s
+          Incluir JOINs con documentos, historial, etc.
+    """
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id].copy()
+    
+    # TODO: Verificar permisos - solo el usuario dueño o staff puede ver
+    
+    return jsonify(solicitud), 200
+
+@app.route('/api/solicitudes', methods=['GET'])
+def listar_solicitudes():
+    """
+    RF-2: Listado de solicitudes por rol
+    TODO: 
+    1. Filtrar según rol del usuario autenticado
+    2. SELECT * FROM solicitudes WHERE estado IN (...) AND asignado_a = %s
+    3. Paginación y búsqueda
+    """
+    # Obtener parámetros de filtro
+    usuario_id = request.args.get('usuario_id')
+    rol = request.args.get('rol')
+    estado = request.args.get('estado')
+    tipo_servicio = request.args.get('tipo_servicio')
+    fecha_desde = request.args.get('fecha_desde')
+    fecha_hasta = request.args.get('fecha_hasta')
+    
+    # TODO: Construir query SQL dinámicamente según filtros
+    # query = "SELECT * FROM solicitudes WHERE 1=1"
+    # if estado: query += " AND estado = %s"
+    # if tipo_servicio: query += " AND tipo_servicio = %s"
+    
+    solicitudes_filtradas = REQUESTS.copy()
+    
+    # Filtrar por usuario si está especificado
+    if usuario_id:
+        solicitudes_filtradas = {
+            k: v for k, v in solicitudes_filtradas.items()
+            if v.get("user_id") == usuario_id
+        }
+    
+    # Filtrar por estado
+    if estado:
+        solicitudes_filtradas = {
+            k: v for k, v in solicitudes_filtradas.items()
+            if v.get("estado") == estado
+        }
+    
+    # Filtrar por rol (mostrar solo solicitudes relevantes para ese rol)
+    if rol:
+        if rol == "VUS":
+            # VUS ve solicitudes en revisión inicial
+            solicitudes_filtradas = {
+                k: v for k, v in solicitudes_filtradas.items()
+                if v.get("estado") in ["EN_REVISION_VUS", "DEVUELTO_VUS"]
+            }
+        elif rol == "TECNICO_UPC":
+            # Técnico ve solicitudes aprobadas por VUS
+            solicitudes_filtradas = {
+                k: v for k, v in solicitudes_filtradas.items()
+                if v.get("estado") in ["EN_EVALUACION_UPC", "APROBADO_UPC"]
+            }
+        elif rol == "DIRECCION":
+            # Dirección ve solicitudes pendientes de firma
+            solicitudes_filtradas = {
+                k: v for k, v in solicitudes_filtradas.items()
+                if v.get("estado") in ["PENDIENTE_FIRMA_DIRECCION", "PENDIENTE_FIRMA_RECHAZO"]
+            }
+        elif rol == "DNCD":
+            # DNCD ve solicitudes enviadas a ellos
+            solicitudes_filtradas = {
+                k: v for k, v in solicitudes_filtradas.items()
+                if v.get("estado") in ["EN_DNCD"]
+            }
+    
+    return jsonify(solicitudes_filtradas), 200
+
+@app.route('/api/solicitud/<req_id>/documentos/<doc_id>', methods=['GET'])
+def descargar_documento(req_id, doc_id):
+    """
+    Descarga de documentos adjuntos
+    TODO:
+    1. Verificar permisos del usuario
+    2. Obtener ruta desde BlobStorage/S3
+    3. Generar URL temporal firmada o stream del archivo
+    """
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id]
+    
+    # Buscar documento
+    documento = None
+    for doc in solicitud.get("documentos", {}).values():
+        if doc.get("id") == doc_id:
+            documento = doc
+            break
+    
+    if not documento:
+        return jsonify({"error": "documento_no_encontrado"}), 404
+    
+    # TODO: Verificar permisos de acceso
+    
+    # TODO: Obtener de BlobStorage/S3
+    filepath = documento.get("ruta")
+    
+    if os.path.exists(filepath):
+        return send_file(filepath, as_attachment=True)
+    
+    return jsonify({"error": "archivo_no_disponible"}), 404
+
+# ------------------------------
+# MÓDULO: VENTANILLA ÚNICA (RF-1.2, RF-1.3, RF-1.4)
+# ------------------------------
+
+@app.route('/api/vus/validar/<req_id>', methods=['POST'])
+def vus_validate(req_id):
+    """
+    RF-1.2: VUS revisa solicitud y marca si Cumple/No Cumple
+    RF-1.3: Si NO cumple, generar Comunicación de Devolución
+    RF-1.4: Registrar trazabilidad de recepción/entrega
+    
+    TODO:
+    1. UPDATE solicitudes SET estado = %s, asignado_a = %s WHERE id = %s
+    2. INSERT INTO historial_estados (solicitud_id, estado_anterior, estado_nuevo, usuario_id)
+    3. Si no cumple: Generar PDF de comunicación de devolución
+    """
+    data = request.json
+    cumple = data.get("cumple")
+    observaciones = data.get("observaciones", "")
+    usuario_vus_id = data.get("usuario_id")  # ID del usuario VUS que valida
+    
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    # TODO: Verificar que el usuario tiene rol VUS
+    # if not verificar_permisos(usuario_vus_id, "VUS"):
+    #     return jsonify({"error": "permisos_insuficientes"}), 403
+    
+    solicitud = REQUESTS[req_id]
+    estado_anterior = solicitud["estado"]
+    
+    if cumple:
+        # RF-1.2: Cumple requisitos - pasa a evaluación técnica
+        nuevo_estado = "EN_EVALUACION_UPC"
+        mensaje_notif = f"Su solicitud {solicitud['numero_expediente']} ha sido aprobada por Ventanilla Única y está en evaluación técnica."
+    else:
+        # RF-1.3: NO cumple - devolver al usuario
+        nuevo_estado = "DEVUELTO_VUS"
+        mensaje_notif = f"Su solicitud {solicitud['numero_expediente']} requiere correcciones. Motivo: {observaciones}"
+        
+        # TODO: Generar PDF de Comunicación de Devolución
+        # pdf_path = generar_comunicacion_devolucion(req_id, observaciones)
+    
+    # Actualizar solicitud
+    solicitud["estado"] = nuevo_estado
+    solicitud["fecha_actualizacion"] = datetime.now().isoformat()
+    
+    # Agregar observación
+    solicitud["observaciones"].append({
+        "fecha": datetime.now().isoformat(),
+        "usuario": usuario_vus_id,
+        "rol": "VUS",
+        "tipo": "VALIDACION_VUS",
+        "texto": observaciones
+    })
+    
+    # Actualizar historial de estados
+    solicitud["historial_estados"].append({
+        "estado": nuevo_estado,
+        "fecha": datetime.now().isoformat(),
+        "usuario": usuario_vus_id
+    })
+    
+    # RF-1.4: Registrar trazabilidad
+    registrar_auditoria(
+        req_id,
+        usuario_vus_id,
+        "VALIDACION_VUS",
+        f"Cumple: {cumple}. {observaciones}"
+    )
+    
+    # RF-1.5: Notificar usuario
+    enviar_notificacion(
+        solicitud["user_id"],
+        "AMBOS",
+        mensaje_notif,
+        req_id
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "solicitud_id": req_id,
+        "estado_anterior": estado_anterior,
+        "estado_nuevo": nuevo_estado,
+        "mensaje": "Validación registrada exitosamente"
+    }), 200
+
+@app.route('/api/vus/entregar/<req_id>', methods=['POST'])
+def vus_entregar_certificado(req_id):
+    """
+    RF-1.4: VUS registra entrega física o digital de certificados
+    TODO: UPDATE solicitudes SET estado = 'ENTREGADO', fecha_entrega = NOW()
+    """
+    data = request.json
+    usuario_vus_id = data.get("usuario_id")
+    tipo_entrega = data.get("tipo_entrega")  # FISICA, DIGITAL
+    receptor = data.get("receptor")  # Nombre de quien recibe
+    
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id]
+    
+    # Validar que el certificado esté listo para entrega
+    if solicitud["estado"] not in ["LISTO_RETIRO", "APROBADO_DNCD"]:
+        return jsonify({
+            "error": "solicitud_no_lista_para_entrega",
+            "estado_actual": solicitud["estado"]
+        }), 400
+    
+    solicitud["estado"] = "ENTREGADO"
+    solicitud["fecha_entrega"] = datetime.now().isoformat()
+    solicitud["tipo_entrega"] = tipo_entrega
+    solicitud["receptor_certificado"] = receptor
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        req_id,
+        usuario_vus_id,
+        "CERTIFICADO_ENTREGADO",
+        f"Tipo: {tipo_entrega}, Receptor: {receptor}"
+    )
+    
+    # Notificar usuario
+    enviar_notificacion(
+        solicitud["user_id"],
+        "AMBOS",
+        f"Su certificado {solicitud['numero_expediente']} ha sido entregado exitosamente.",
+        req_id
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "mensaje": "Entrega registrada exitosamente"
+    }), 200
+
+# ------------------------------
+# MÓDULO: EVALUACIÓN TÉCNICA UPC (RF-2)
+# ------------------------------
+
+@app.route('/api/upc/recibir/<req_id>', methods=['POST'])
+def upc_recibir_solicitud(req_id):
+    """
+    RF-2.1: Recepcionista (VUCE) recibe y remite a UPC
+    TODO: UPDATE solicitudes SET estado = 'EN_EVALUACION_UPC', asignado_a = %s
+    """
+    data = request.json
+    tecnico_id = data.get("tecnico_id")  # ID del técnico asignado
+    
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id]
+    
+    # Validar estado previo
+    if solicitud["estado"] != "EN_REVISION_VUS":
+        return jsonify({
+            "error": "solicitud_no_lista_para_upc",
+            "estado_actual": solicitud["estado"]
+        }), 400
+    
+    solicitud["estado"] = "EN_EVALUACION_UPC"
+    solicitud["asignado_a"] = tecnico_id
+    solicitud["fecha_asignacion_upc"] = datetime.now().isoformat()
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        req_id,
+        tecnico_id,
+        "ASIGNADO_A_UPC",
+        f"Solicitud asignada a técnico {tecnico_id}"
+    )
+    
+    # Notificar técnico
+    enviar_notificacion(
+        tecnico_id,
+        "PLATAFORMA",
+        f"Nueva solicitud asignada: {solicitud['numero_expediente']}",
+        req_id
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "mensaje": "Solicitud asignada a UPC"
+    }), 200
+
+@app.route('/api/upc/evaluar/<req_id>', methods=['POST'])
+def upc_evaluar(req_id):
+    """
+    RF-2.2: Técnico de UPC evalúa el expediente según requisitos establecidos
+    RF-2.3: Si NO aprobado, devolver al usuario o remitir a Dirección para rechazo
+    
+    TODO:
+    1. Validar que todos los requisitos obligatorios fueron verificados
+    2. UPDATE solicitudes SET estado = %s, evaluacion_tecnica = %s
+    3. Si rechazado: Generar borrador de comunicación de rechazo
+    """
+    data = request.json
+    tecnico_id = data.get("tecnico_id")
+    aprobado = data.get("aprobado")  # true/false
+    tipo_rechazo = data.get("tipo_rechazo")  # DEVOLUCION, RECHAZO_FINAL
+    observaciones = data.get("observaciones", "")
+    checklist_requisitos = data.get("checklist_requisitos", {})  # {requisito_id: cumple}
+    
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id]
+    
+    # TODO: Verificar que el usuario es técnico UPC
+    # if not verificar_permisos(tecnico_id, "TECNICO_UPC"):
+    #     return jsonify({"error": "permisos_insuficientes"}), 403
+    
+    # Validar estado
+    if solicitud["estado"] not in ["EN_EVALUACION_UPC", "DEVUELTO_UPC"]:
+        return jsonify({
+            "error": "solicitud_no_en_evaluacion",
+            "estado_actual": solicitud["estado"]
+        }), 400
+    
+    estado_anterior = solicitud["estado"]
+    
+    # Guardar evaluación técnica
+    evaluacion = {
+        "fecha": datetime.now().isoformat(),
+        "tecnico_id": tecnico_id,
+        "aprobado": aprobado,
+        "checklist": checklist_requisitos,
+        "observaciones": observaciones
+    }
+    
+    if "evaluaciones" not in solicitud:
+        solicitud["evaluaciones"] = []
+    solicitud["evaluaciones"].append(evaluacion)
+    
+    if aprobado:
+        # RF-2.2: Aprobado - pasa a Encargado UPC / Dirección
+        nuevo_estado = "APROBADO_UPC"
+        mensaje_notif = f"Su solicitud {solicitud['numero_expediente']} ha sido aprobada por el área técnica."
+        
+    else:
+        # RF-2.3: NO Aprobado
+        if tipo_rechazo == "DEVOLUCION":
+            # Devolución para correcciones - regresa al usuario
+            nuevo_estado = "DEVUELTO_UPC"
+            mensaje_notif = f"Su solicitud {solicitud['numero_expediente']} requiere correcciones técnicas. Motivo: {observaciones}"
+        else:
+            # Rechazo definitivo - necesita firma de Dirección
+            nuevo_estado = "RECHAZADO_UPC"
+            mensaje_notif = f"Su solicitud {solicitud['numero_expediente']} está en proceso de revisión final."
+            
+            # TODO: Generar borrador de Comunicación de Rechazo para firma de Dirección
+            # pdf_borrador = generar_comunicacion_rechazo_borrador(req_id, observaciones)
+    
+    # Actualizar solicitud
+    solicitud["estado"] = nuevo_estado
+    solicitud["fecha_actualizacion"] = datetime.now().isoformat()
+    
+    # Agregar observación
+    solicitud["observaciones"].append({
+        "fecha": datetime.now().isoformat(),
+        "usuario": tecnico_id,
+        "rol": "TECNICO_UPC",
+        "tipo": "EVALUACION_TECNICA",
+        "texto": observaciones,
+        "checklist": checklist_requisitos
+    })
+    
+    # Actualizar historial
+    solicitud["historial_estados"].append({
+        "estado": nuevo_estado,
+        "fecha": datetime.now().isoformat(),
+        "usuario": tecnico_id
+    })
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        req_id,
+        tecnico_id,
+        "EVALUACION_TECNICA_UPC",
+        f"Aprobado: {aprobado}, Tipo: {tipo_rechazo if not aprobado else 'N/A'}"
+    )
+    
+    # Notificar usuario
+    enviar_notificacion(
+        solicitud["user_id"],
+        "AMBOS",
+        mensaje_notif,
+        req_id
+    )
+    
+    # Si fue rechazado definitivamente, notificar a Dirección
+    if nuevo_estado == "RECHAZADO_UPC":
+        # TODO: Obtener usuarios con rol DIRECCION
+        # enviar_notificacion(direccion_id, ...)
+        pass
+    
+    return jsonify({
+        "status": "ok",
+        "solicitud_id": req_id,
+        "estado_anterior": estado_anterior,
+        "estado_nuevo": nuevo_estado,
+        "mensaje": "Evaluación registrada exitosamente"
+    }), 200
+
+@app.route('/api/upc/reasignar/<req_id>', methods=['POST'])
+def upc_reasignar(req_id):
+    """
+    Reasignar solicitud a otro técnico UPC
+    TODO: UPDATE solicitudes SET asignado_a = %s WHERE id = %s
+    """
+    data = request.json
+    encargado_id = data.get("encargado_id")
+    nuevo_tecnico_id = data.get("nuevo_tecnico_id")
+    motivo = data.get("motivo", "")
+    
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    # TODO: Verificar que usuario es ENCARGADO_UPC
+    
+    solicitud = REQUESTS[req_id]
+    tecnico_anterior = solicitud.get("asignado_a")
+    
+    solicitud["asignado_a"] = nuevo_tecnico_id
+    solicitud["fecha_reasignacion"] = datetime.now().isoformat()
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        req_id,
+        encargado_id,
+        "SOLICITUD_REASIGNADA",
+        f"De {tecnico_anterior} a {nuevo_tecnico_id}. Motivo: {motivo}"
+    )
+    
+    # Notificar nuevo técnico
+    enviar_notificacion(
+        nuevo_tecnico_id,
+        "PLATAFORMA",
+        f"Solicitud reasignada a usted: {solicitud['numero_expediente']}",
+        req_id
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "mensaje": "Solicitud reasignada exitosamente"
+    }), 200
+
+# ------------------------------
+# MÓDULO: DIRECCIÓN (RF-2.4, RF-3.2)
+# ------------------------------
+
+@app.route('/api/direccion/pendientes', methods=['GET'])
+def direccion_pendientes():
+    """
+    Obtener solicitudes pendientes de firma por Dirección
+    TODO: SELECT * FROM solicitudes WHERE estado IN 
+          ('RECHAZADO_UPC', 'APROBADO_UPC', 'PENDIENTE_FIRMA_DIRECCION')
+    """
+    solicitudes_pendientes = {
+        k: v for k, v in REQUESTS.items()
+        if v.get("estado") in ["RECHAZADO_UPC", "APROBADO_UPC", "PENDIENTE_FIRMA_DIRECCION"]
+    }
+    
+    return jsonify(solicitudes_pendientes), 200
+
+@app.route('/api/direccion/firma-rechazo/<req_id>', methods=['POST'])
+def direccion_firma_rechazo(req_id):
+    """
+    RF-2.4: Dirección firma digitalmente la Comunicación de Rechazo
+    
+    TODO:
+    1. Obtener borrador de comunicación de rechazo
+    2. Aplicar firma digital certificada (integración con proveedor de firmas)
+    3. Generar PDF final firmado
+    4. UPDATE solicitudes SET estado = 'RECHAZADO_FINAL'
+    5. Guardar documento firmado en BlobStorage
+    """
+    data = request.json
+    direccion_user_id = data.get("direccion_user_id")
+    firma_digital = data.get("firma_digital")  # Token/certificado de firma digital
+    observaciones_direccion = data.get("observaciones", "")
+    
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id]
+    
+    # TODO: Verificar rol DIRECCION
+    # if not verificar_permisos(direccion_user_id, "DIRECCION"):
+    #     return jsonify({"error": "permisos_insuficientes"}), 403
+    
+    # Validar estado
+    if solicitud["estado"] != "RECHAZADO_UPC":
+        return jsonify({
+            "error": "solicitud_no_requiere_firma_rechazo",
+            "estado_actual": solicitud["estado"]
+        }), 400
+    
+    # TODO: Generar PDF de Comunicación de Rechazo
+    # pdf_path = generar_comunicacion_rechazo_final(req_id, observaciones_direccion)
+    
+    # TODO: Aplicar firma digital al PDF
+    # pdf_firmado = aplicar_firma_digital(pdf_path, firma_digital)
+    
+    # Simular documento firmado
+    documento_rechazo = {
+        "id": generate_id(),
+        "tipo": "COMUNICACION_RECHAZO",
+        "nombre": f"Rechazo_{solicitud['numero_expediente']}.pdf",
+        "ruta": f"firmados/rechazo_{req_id}.pdf",
+        "fecha_firma": datetime.now().isoformat(),
+        "firmante": direccion_user_id,
+        "firma_digital": firma_digital  # Hash o referencia a la firma
+    }
+    
+    if "documentos_generados" not in solicitud:
+        solicitud["documentos_generados"] = []
+    solicitud["documentos_generados"].append(documento_rechazo)
+    
+    # Actualizar estado
+    solicitud["estado"] = "RECHAZADO_FINAL"
+    solicitud["fecha_actualizacion"] = datetime.now().isoformat()
+    solicitud["fecha_rechazo"] = datetime.now().isoformat()
+    
+    # Actualizar historial
+    solicitud["historial_estados"].append({
+        "estado": "RECHAZADO_FINAL",
+        "fecha": datetime.now().isoformat(),
+        "usuario": direccion_user_id
+    })
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        req_id,
+        direccion_user_id,
+        "FIRMA_RECHAZO_DIRECCION",
+        f"Comunicación de rechazo firmada. {observaciones_direccion}"
+    )
+    
+    # RF-2.4: Notificar usuario mediante correo y plataforma
+    enviar_notificacion(
+        solicitud["user_id"],
+        "AMBOS",
+        f"Su solicitud {solicitud['numero_expediente']} ha sido rechazada. Puede descargar la comunicación oficial desde su panel.",
+        req_id
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "mensaje": "Comunicación de rechazo firmada y notificada",
+        "documento_id": documento_rechazo["id"]
+    }), 200
+
+@app.route('/api/direccion/firma-aprobacion/<req_id>', methods=['POST'])
+def direccion_firma_aprobacion(req_id):
+    """
+    RF-3.2: Dirección firma digitalmente los Certificados/Permisos aprobados
+    
+    TODO:
+    1. Generar certificado/permiso en PDF según tipo de servicio
+    2. Aplicar firma digital certificada
+    3. UPDATE solicitudes SET estado = 'FIRMADO_DIRECCION'
+    4. Remitir a DNCD si aplica
+    """
+    data = request.json
+    direccion_user_id = data.get("direccion_user_id")
+    firma_digital = data.get("firma_digital")
+    
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id]
+    
+    # TODO: Verificar rol DIRECCION
+    
+    # Validar estado
+    if solicitud["estado"] not in ["APROBADO_UPC", "PENDIENTE_FIRMA_DIRECCION"]:
+        return jsonify({
+            "error": "solicitud_no_lista_para_firma",
+            "estado_actual": solicitud["estado"]
+        }), 400
+    
+    # TODO: Generar certificado según tipo de servicio
+    # if solicitud["tipo_servicio"] == "CLASE_A":
+    #     pdf = generar_certificado_clase_a(solicitud)
+    # elif solicitud["tipo_servicio"] == "CLASE_B_PRIVADO":
+    #     pdf = generar_certificado_clase_b(solicitud)
+    # etc...
+    
+    # TODO: Aplicar firma digital
+    # pdf_firmado = aplicar_firma_digital(pdf, firma_digital)
+    
+    # Simular certificado firmado
+    certificado = {
+        "id": generate_id(),
+        "numero_certificado": f"CERT-{datetime.now().year}-{len(CERTIFICADOS) + 1:05d}",
+        "tipo": solicitud["tipo_servicio"],
+        "nombre": f"Certificado_{solicitud['numero_expediente']}.pdf",
+        "ruta": f"certificados/cert_{req_id}.pdf",
+        "fecha_emision": datetime.now().isoformat(),
+        "fecha_vencimiento": (datetime.now() + timedelta(days=365)).isoformat(),  # 1 año
+        "firmante_direccion": direccion_user_id,
+        "firma_digital_direccion": firma_digital,
+        "estado": "PENDIENTE_DNCD" if requiere_dncd(solicitud["tipo_servicio"]) else "VIGENTE"
+    }
+    
+    CERTIFICADOS[certificado["id"]] = certificado
+    solicitud["certificado_id"] = certificado["id"]
+    
+    if "documentos_generados" not in solicitud:
+        solicitud["documentos_generados"] = []
+    solicitud["documentos_generados"].append(certificado)
+    
+    # Determinar siguiente estado
+    if requiere_dncd(solicitud["tipo_servicio"]):
+        nuevo_estado = "FIRMADO_DIRECCION"
+        mensaje_notif = f"Su solicitud {solicitud['numero_expediente']} ha sido aprobada y firmada. Está en proceso de verificación final por DNCD."
+    else:
+        nuevo_estado = "LISTO_RETIRO"
+        mensaje_notif = f"Su certificado {solicitud['numero_expediente']} está listo para retiro en Ventanilla Única."
+    
+    # Actualizar solicitud
+    solicitud["estado"] = nuevo_estado
+    solicitud["fecha_actualizacion"] = datetime.now().isoformat()
+    solicitud["fecha_aprobacion"] = datetime.now().isoformat()
+    
+    # Actualizar historial
+    solicitud["historial_estados"].append({
+        "estado": nuevo_estado,
+        "fecha": datetime.now().isoformat(),
+        "usuario": direccion_user_id
+    })
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        req_id,
+        direccion_user_id,
+        "FIRMA_APROBACION_DIRECCION",
+        f"Certificado firmado: {certificado['numero_certificado']}"
+    )
+    
+    # Notificar usuario
+    enviar_notificacion(
+        solicitud["user_id"],
+        "AMBOS",
+        mensaje_notif,
+        req_id
+    )
+    
+    # Si requiere DNCD, notificar a DNCD
+    if requiere_dncd(solicitud["tipo_servicio"]):
+        # TODO: Obtener usuarios con rol DNCD
+        # enviar_notificacion(dncd_id, ...)
+        pass
+    
+    return jsonify({
+        "status": "ok",
+        "mensaje": "Certificado firmado exitosamente",
+        "certificado_id": certificado["id"],
+        "numero_certificado": certificado["numero_certificado"],
+        "estado_nuevo": nuevo_estado
+    }), 200
+
+def requiere_dncd(tipo_servicio):
+    """
+    Determina si un tipo de servicio requiere verificación DNCD
+    TODO: Consultar en tabla catalogo_servicios
+    """
+    servicios_dncd = [
+        "IMPORTACION_MATERIA_PRIMA",
+        "IMPORTACION_MEDICAMENTOS",
+        "CLASE_A"  # Según normativa
+    ]
+    return tipo_servicio in servicios_dncd
+
+# ------------------------------
+# MÓDULO: DNCD (RF-3.3)
+# ------------------------------
+
+@app.route('/api/dncd/pendientes', methods=['GET'])
+def dncd_pendientes():
+    """
+    Obtener solicitudes enviadas a DNCD para verificación
+    TODO: SELECT * FROM solicitudes WHERE estado IN ('FIRMADO_DIRECCION', 'EN_DNCD')
+    """
+    solicitudes_dncd = {
+        k: v for k, v in REQUESTS.items()
+        if v.get("estado") in ["FIRMADO_DIRECCION", "EN_DNCD"]
+    }
+    
+    return jsonify(solicitudes_dncd), 200
+
+@app.route('/api/dncd/recibir/<req_id>', methods=['POST'])
+def dncd_recibir(req_id):
+    """
+    DNCD recibe la solicitud para verificación
+    TODO: UPDATE solicitudes SET estado = 'EN_DNCD'
+    """
+    data = request.json
+    dncd_user_id = data.get("dncd_user_id")
+    
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id]
+    
+    # TODO: Verificar rol DNCD
+    
+    if solicitud["estado"] != "FIRMADO_DIRECCION":
+        return jsonify({
+            "error": "solicitud_no_lista_para_dncd",
+            "estado_actual": solicitud["estado"]
+        }), 400
+    
+    solicitud["estado"] = "EN_DNCD"
+    solicitud["asignado_dncd"] = dncd_user_id
+    solicitud["fecha_recepcion_dncd"] = datetime.now().isoformat()
+    
+    # Actualizar historial
+    solicitud["historial_estados"].append({
+        "estado": "EN_DNCD",
+        "fecha": datetime.now().isoformat(),
+        "usuario": dncd_user_id
+    })
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        req_id,
+        dncd_user_id,
+        "RECIBIDO_DNCD",
+        "Solicitud recibida en DNCD para verificación"
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "mensaje": "Solicitud recibida en DNCD"
+    }), 200
+
+@app.route('/api/dncd/firma/<req_id>', methods=['POST'])
+def dncd_firma(req_id):
+    """
+    RF-3.3: DNCD firma y autoriza el permiso final
+    
+    TODO:
+    1. Aplicar firma digital DNCD al certificado
+    2. UPDATE solicitudes SET estado = 'APROBADO_DNCD'
+    3. UPDATE certificados SET estado = 'VIGENTE', firma_dncd = %s
+    4. Notificar usuario para retiro
+    """
+    data = request.json
+    dncd_user_id = data.get("dncd_user_id")
+    firma_digital_dncd = data.get("firma_digital")
+    observaciones = data.get("observaciones", "")
+    aprobado = data.get("aprobado", True)
+    
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id]
+    
+    # TODO: Verificar rol DNCD
+    
+    if solicitud["estado"] != "EN_DNCD":
+        return jsonify({
+            "error": "solicitud_no_en_dncd",
+            "estado_actual": solicitud["estado"]
+        }), 400
+    
+    if not aprobado:
+        # DNCD rechaza - devolver a Dirección
+        solicitud["estado"] = "RECHAZADO_DNCD"
+        mensaje_notif = f"Su solicitud {solicitud['numero_expediente']} requiere revisión adicional."
+        
+        # Agregar observación DNCD
+        solicitud["observaciones"].append({
+            "fecha": datetime.now().isoformat(),
+            "usuario": dncd_user_id,
+            "rol": "DNCD",
+            "tipo": "RECHAZO_DNCD",
+            "texto": observaciones
+        })
+        
+    else:
+        # DNCD aprueba
+        # TODO: Aplicar firma digital DNCD al certificado
+        certificado_id = solicitud.get("certificado_id")
+        if certificado_id and certificado_id in CERTIFICADOS:
+            certificado = CERTIFICADOS[certificado_id]
+            certificado["firmante_dncd"] = dncd_user_id
+            certificado["firma_digital_dncd"] = firma_digital_dncd
+            certificado["fecha_firma_dncd"] = datetime.now().isoformat()
+            certificado["estado"] = "VIGENTE"
+        
+        solicitud["estado"] = "APROBADO_DNCD"
+        solicitud["fecha_aprobacion_dncd"] = datetime.now().isoformat()
+        
+        # RF-3.3: Cambiar estado a LISTO_RETIRO para que usuario retire
+        solicitud["estado"] = "LISTO_RETIRO"
+        mensaje_notif = f"Su certificado {solicitud['numero_expediente']} ha sido autorizado por DNCD y está listo para retiro."
+    
+    solicitud["fecha_actualizacion"] = datetime.now().isoformat()
+    
+    # Actualizar historial
+    solicitud["historial_estados"].append({
+        "estado": solicitud["estado"],
+        "fecha": datetime.now().isoformat(),
+        "usuario": dncd_user_id
+    })
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        req_id,
+        dncd_user_id,
+        "FIRMA_DNCD" if aprobado else "RECHAZO_DNCD",
+        f"Aprobado: {aprobado}. {observaciones}"
+    )
+    
+    # RF-3.3: Notificar usuario para retiro
+    enviar_notificacion(
+        solicitud["user_id"],
+        "AMBOS",
+        mensaje_notif,
+        req_id
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "mensaje": "Verificación DNCD completada",
+        "estado_nuevo": solicitud["estado"]
+    }), 200
+
+# ------------------------------
+# MÓDULO: CERTIFICADOS Y DOCUMENTOS
+# ------------------------------
+
+@app.route('/api/certificado/<certificado_id>', methods=['GET'])
+def obtener_certificado(certificado_id):
+    """
+    Obtener detalles de un certificado
+    TODO: SELECT * FROM certificados WHERE id = %s
+    """
+    if certificado_id not in CERTIFICADOS:
+        return jsonify({"error": "certificado_no_encontrado"}), 404
+    
+    certificado = CERTIFICADOS[certificado_id]
+    
+    # TODO: Verificar permisos de acceso
+    
+    return jsonify(certificado), 200
+
+@app.route('/api/certificado/<certificado_id>/descargar', methods=['GET'])
+def descargar_certificado(certificado_id):
+    """
+    Descargar PDF del certificado firmado
+    TODO:
+    1. Obtener de BlobStorage/S3
+    2. Verificar permisos
+    3. Registrar descarga en auditoría
+    """
+    if certificado_id not in CERTIFICADOS:
+        return jsonify({"error": "certificado_no_encontrado"}), 404
+    
+    certificado = CERTIFICADOS[certificado_id]
+    
+    # TODO: Verificar permisos
+    
+    # TODO: Obtener de BlobStorage/S3
+    filepath = certificado.get("ruta")
+    
+    # Registrar auditoría de descarga
+    # registrar_auditoria(None, user_id, "DESCARGA_CERTIFICADO", certificado_id)
+    
+    if os.path.exists(filepath):
+        return send_file(filepath, as_attachment=True)
+    
+    return jsonify({"error": "archivo_no_disponible"}), 404
+
+@app.route('/api/certificado/<certificado_id>/validar', methods=['GET'])
+def validar_certificado(certificado_id):
+    """
+    Validar autenticidad de un certificado por su número
+    Endpoint público para verificación de terceros
+    TODO: SELECT * FROM certificados WHERE numero_certificado = %s AND estado = 'VIGENTE'
+    """
+    numero_certificado = request.args.get('numero')
+    
+    if numero_certificado:
+        # Buscar por número de certificado
+        for cert_id, cert in CERTIFICADOS.items():
+            if cert.get("numero_certificado") == numero_certificado:
+                # Verificar vigencia
+                fecha_venc = datetime.fromisoformat(cert["fecha_vencimiento"])
+                vigente = fecha_venc > datetime.now() and cert.get("estado") == "VIGENTE"
+                
+                return jsonify({
+                    "valido": vigente,
+                    "numero_certificado": cert["numero_certificado"],
+                    "tipo": cert["tipo"],
+                    "fecha_emision": cert["fecha_emision"],
+                    "fecha_vencimiento": cert["fecha_vencimiento"],
+                    "estado": cert["estado"]
+                }), 200
+        
+        return jsonify({"valido": False, "mensaje": "Certificado no encontrado"}), 404
+    
+    # Validar por ID
+    if certificado_id not in CERTIFICADOS:
+        return jsonify({"valido": False, "mensaje": "Certificado no encontrado"}), 404
+    
+    cert = CERTIFICADOS[certificado_id]
+    fecha_venc = datetime.fromisoformat(cert["fecha_vencimiento"])
+    vigente = fecha_venc > datetime.now() and cert.get("estado") == "VIGENTE"
+    
+    return jsonify({
+        "valido": vigente,
+        "numero_certificado": cert["numero_certificado"],
+        "tipo": cert["tipo"],
+        "fecha_emision": cert["fecha_emision"],
+        "fecha_vencimiento": cert["fecha_vencimiento"],
+        "estado": cert["estado"]
+    }), 200
+
+# ------------------------------
+# MÓDULO: NOTIFICACIONES
+# ------------------------------
+
+@app.route('/api/notificaciones/<user_id>', methods=['GET'])
+def obtener_notificaciones(user_id):
+    """
+    RF-1.5: Obtener notificaciones del usuario
+    TODO: SELECT * FROM notificaciones WHERE usuario_id = %s ORDER BY fecha DESC
+    """
+    if user_id not in NOTIFICACIONES:
+        return jsonify([]), 200
+    
+    notificaciones = NOTIFICACIONES[user_id]
+    
+    # Filtrar por tipo si se especifica
+    tipo = request.args.get('tipo')
+    if tipo:
+        notificaciones = [n for n in notificaciones if n.get("tipo") == tipo]
+    
+    # Filtrar solo no leídas si se solicita
+    solo_no_leidas = request.args.get('no_leidas', 'false').lower() == 'true'
+    if solo_no_leidas:
+        notificaciones = [n for n in notificaciones if not n.get("leida", False)]
+    
+    return jsonify(notificaciones), 200
+
+@app.route('/api/notificaciones/<notif_id>/marcar-leida', methods=['POST'])
+def marcar_notificacion_leida(notif_id):
+    """
+    Marcar notificación como leída
+    TODO: UPDATE notificaciones SET leida = true WHERE id = %s
+    """
+    user_id = request.json.get("user_id")
+    
+    if user_id in NOTIFICACIONES:
+        for notif in NOTIFICACIONES[user_id]:
+            if notif.get("id") == notif_id:
+                notif["leida"] = True
+                notif["fecha_lectura"] = datetime.now().isoformat()
+                return jsonify({"status": "ok"}), 200
+    
+    return jsonify({"error": "notificacion_no_encontrada"}), 404
+
+@app.route('/api/notificaciones/<user_id>/marcar-todas-leidas', methods=['POST'])
+def marcar_todas_leidas(user_id):
+    """
+    Marcar todas las notificaciones como leídas
+    TODO: UPDATE notificaciones SET leida = true WHERE usuario_id = %s
+    """
+    if user_id in NOTIFICACIONES:
+        for notif in NOTIFICACIONES[user_id]:
+            notif["leida"] = True
+            notif["fecha_lectura"] = datetime.now().isoformat()
+    
+    return jsonify({"status": "ok"}), 200
+
+# ------------------------------
+# MÓDULO: ALERTAS DE VENCIMIENTO
+# ------------------------------
+
+@app.route('/api/admin/verificar-vencimientos', methods=['POST'])
+def verificar_vencimientos():
+    """
+    RF-1.5: Verificar certificados próximos a vencer y enviar alertas
+    Debe ejecutarse periódicamente (cron job)
+    TODO:
+    1. SELECT * FROM certificados WHERE estado = 'VIGENTE' 
+       AND fecha_vencimiento BETWEEN NOW() AND NOW() + INTERVAL '30 days'
+    2. Enviar notificaciones a usuarios
+    """
+    dias_aviso = [30, 15, 7, 1]  # Días antes del vencimiento para notificar
+    certificados_por_vencer = []
+    
+    for cert_id, cert in CERTIFICADOS.items():
+        if cert.get("estado") != "VIGENTE":
+            continue
+        
+        fecha_venc = datetime.fromisoformat(cert["fecha_vencimiento"])
+        dias_restantes = (fecha_venc - datetime.now()).days
+        
+        if dias_restantes in dias_aviso:
+            # Obtener solicitud asociada para saber el usuario
+            solicitud = None
+            for req in REQUESTS.values():
+                if req.get("certificado_id") == cert_id:
+                    solicitud = req
+                    break
+            
+            if solicitud:
+                mensaje = f"Su certificado {cert['numero_certificado']} vencerá en {dias_restantes} días. Fecha de vencimiento: {cert['fecha_vencimiento'][:10]}"
+                
+                enviar_notificacion(
+                    solicitud["user_id"],
+                    "AMBOS",
+                    mensaje,
+                    solicitud["id"]
+                )
+                
+                certificados_por_vencer.append({
+                    "certificado_id": cert_id,
+                    "numero": cert["numero_certificado"],
+                    "dias_restantes": dias_restantes,
+                    "usuario_id": solicitud["user_id"]
+                })
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        None,
+        "SYSTEM",
+        "VERIFICACION_VENCIMIENTOS",
+        f"Certificados verificados. {len(certificados_por_vencer)} alertas enviadas."
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "alertas_enviadas": len(certificados_por_vencer),
+        "certificados": certificados_por_vencer
+    }), 200
+
+# ------------------------------
+# MÓDULO: AUDITORÍA Y TRAZABILIDAD
+# ------------------------------
+
+@app.route('/api/auditoria/<solicitud_id>', methods=['GET'])
+def obtener_auditoria_solicitud(solicitud_id):
+    """
+    Obtener historial completo de auditoría de una solicitud
+    TODO: SELECT * FROM auditoria WHERE solicitud_id = %s ORDER BY timestamp DESC
+    RNF: Trazabilidad completa de todas las acciones
+    """
+    if solicitud_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    # TODO: Verificar permisos - solo staff puede ver auditoría completa
+    
+    auditoria_solicitud = [
+        reg for reg in HISTORIAL_ACCIONES 
+        if reg.get("solicitud_id") == solicitud_id
+    ]
+    
+    # Ordenar por fecha descendente
+    auditoria_solicitud.sort(key=lambda x: x["timestamp"], reverse=True)
+    
+    return jsonify(auditoria_solicitud), 200
+
+@app.route('/api/auditoria', methods=['GET'])
+def obtener_auditoria_global():
+    """
+    Obtener auditoría global del sistema (solo administradores)
+    TODO: 
+    1. Verificar rol ADMIN
+    2. SELECT * FROM auditoria ORDER BY timestamp DESC LIMIT %s OFFSET %s
+    3. Implementar filtros por fecha, usuario, acción, etc.
+    """
+    # TODO: Verificar rol ADMIN
+    
+    # Parámetros de paginación
+    limite = int(request.args.get('limite', 100))
+    offset = int(request.args.get('offset', 0))
+    
+    # Filtros opcionales
+    usuario_id = request.args.get('usuario_id')
+    accion = request.args.get('accion')
+    fecha_desde = request.args.get('fecha_desde')
+    fecha_hasta = request.args.get('fecha_hasta')
+    
+    auditoria_filtrada = HISTORIAL_ACCIONES.copy()
+    
+    # Aplicar filtros
+    if usuario_id:
+        auditoria_filtrada = [a for a in auditoria_filtrada if a.get("usuario_id") == usuario_id]
+    
+    if accion:
+        auditoria_filtrada = [a for a in auditoria_filtrada if a.get("accion") == accion]
+    
+    if fecha_desde:
+        auditoria_filtrada = [a for a in auditoria_filtrada if a.get("timestamp") >= fecha_desde]
+    
+    if fecha_hasta:
+        auditoria_filtrada = [a for a in auditoria_filtrada if a.get("timestamp") <= fecha_hasta]
+    
+    # Ordenar y paginar
+    auditoria_filtrada.sort(key=lambda x: x["timestamp"], reverse=True)
+    total = len(auditoria_filtrada)
+    auditoria_paginada = auditoria_filtrada[offset:offset+limite]
+    
+    return jsonify({
+        "total": total,
+        "limite": limite,
+        "offset": offset,
+        "registros": auditoria_paginada
+    }), 200
+
+# ------------------------------
+# MÓDULO: REPORTES Y ESTADÍSTICAS
+# ------------------------------
+
+@app.route('/api/reportes/estadisticas', methods=['GET'])
+def obtener_estadisticas():
+    """
+    Obtener estadísticas generales del sistema
+    TODO: Consultas SQL agregadas para métricas de rendimiento
+    """
+    # TODO: Verificar permisos - solo staff
+    
+    # Contar solicitudes por estado
+    solicitudes_por_estado = {}
+    for estado in ESTADOS_FLUJO:
+        count = sum(1 for r in REQUESTS.values() if r.get("estado") == estado)
+        if count > 0:
+            solicitudes_por_estado[estado] = count
+    
+    # Solicitudes por tipo de servicio
+    solicitudes_por_tipo = {}
+    for tipo in TIPOS_SERVICIO.keys():
+        count = sum(1 for r in REQUESTS.values() if r.get("tipo_servicio") == tipo)
+        if count > 0:
+            solicitudes_por_tipo[tipo] = count
+    
+    # Certificados vigentes
+    certificados_vigentes = sum(
+        1 for c in CERTIFICADOS.values() 
+        if c.get("estado") == "VIGENTE"
+    )
+    
+    # Certificados por vencer (próximos 30 días)
+    certificados_por_vencer = 0
+    for cert in CERTIFICADOS.values():
+        if cert.get("estado") == "VIGENTE":
+            fecha_venc = datetime.fromisoformat(cert["fecha_vencimiento"])
+            dias_restantes = (fecha_venc - datetime.now()).days
+            if 0 < dias_restantes <= 30:
+                certificados_por_vencer += 1
+    
+    # Tiempo promedio de procesamiento
+    # TODO: Calcular tiempo entre fecha_creacion y fecha_aprobacion
+    
+    estadisticas = {
+        "total_solicitudes": len(REQUESTS),
+        "total_usuarios": len(USERS),
+        "total_certificados": len(CERTIFICADOS),
+        "certificados_vigentes": certificados_vigentes,
+        "certificados_por_vencer_30_dias": certificados_por_vencer,
+        "solicitudes_por_estado": solicitudes_por_estado,
+        "solicitudes_por_tipo": solicitudes_por_tipo,
+        "fecha_generacion": datetime.now().isoformat()
+    }
+    
+    return jsonify(estadisticas), 200
+
+@app.route('/api/reportes/solicitudes-periodo', methods=['GET'])
+def reporte_solicitudes_periodo():
+    """
+    Reporte de solicitudes en un período de tiempo
+    TODO: SELECT * FROM solicitudes WHERE fecha_creacion BETWEEN %s AND %s
+    """
+    fecha_inicio = request.args.get('fecha_inicio')
+    fecha_fin = request.args.get('fecha_fin')
+    
+    if not fecha_inicio or not fecha_fin:
+        return jsonify({"error": "fechas_requeridas"}), 400
+    
+    # TODO: Verificar permisos
+    
+    solicitudes_periodo = []
+    for req_id, req in REQUESTS.items():
+        fecha_creacion = req.get("fecha_creacion", "")
+        if fecha_inicio <= fecha_creacion <= fecha_fin:
+            solicitudes_periodo.append({
+                "id": req_id,
+                "numero_expediente": req.get("numero_expediente"),
+                "tipo_servicio": req.get("tipo_servicio"),
+                "estado": req.get("estado"),
+                "fecha_creacion": fecha_creacion,
+                "user_id": req.get("user_id")
+            })
+    
+    return jsonify({
+        "fecha_inicio": fecha_inicio,
+        "fecha_fin": fecha_fin,
+        "total": len(solicitudes_periodo),
+        "solicitudes": solicitudes_periodo
+    }), 200
+
+@app.route('/api/reportes/rendimiento-tecnicos', methods=['GET'])
+def reporte_rendimiento_tecnicos():
+    """
+    Reporte de rendimiento de técnicos UPC
+    TODO: Query complejo con JOIN entre solicitudes, usuarios y tiempos
+    """
+    # TODO: Verificar permisos - solo ENCARGADO_UPC o superior
+    
+    rendimiento = {}
+    
+    # Analizar solicitudes evaluadas por cada técnico
+    for req in REQUESTS.values():
+        evaluaciones = req.get("evaluaciones", [])
+        for evaluacion in evaluaciones:
+            tecnico_id = evaluacion.get("tecnico_id")
+            if tecnico_id not in rendimiento:
+                rendimiento[tecnico_id] = {
+                    "tecnico_id": tecnico_id,
+                    "total_evaluaciones": 0,
+                    "aprobadas": 0,
+                    "rechazadas": 0,
+                    "devueltas": 0
+                }
+            
+            rendimiento[tecnico_id]["total_evaluaciones"] += 1
+            
+            if evaluacion.get("aprobado"):
+                rendimiento[tecnico_id]["aprobadas"] += 1
+            else:
+                tipo = req.get("estado")
+                if "RECHAZADO" in tipo:
+                    rendimiento[tecnico_id]["rechazadas"] += 1
+                elif "DEVUELTO" in tipo:
+                    rendimiento[tecnico_id]["devueltas"] += 1
+    
+    return jsonify(list(rendimiento.values())), 200
+
+# ------------------------------
+# MÓDULO: ADMINISTRACIÓN DEL SISTEMA
+# ------------------------------
+
+@app.route('/api/admin/usuarios', methods=['GET'])
+def listar_usuarios_admin():
+    """
+    Listar todos los usuarios del sistema (solo ADMIN)
+    TODO: SELECT * FROM usuarios ORDER BY fecha_registro DESC
+    """
+    # TODO: Verificar rol ADMIN
+    
+    # Filtros opcionales
+    rol = request.args.get('rol')
+    activo = request.args.get('activo')
+    
+    usuarios_filtrados = USERS.copy()
+    
+    if rol:
+        usuarios_filtrados = {k: v for k, v in usuarios_filtrados.items() if v.get("rol") == rol}
+    
+    if activo is not None:
+        activo_bool = activo.lower() == 'true'
+        usuarios_filtrados = {k: v for k, v in usuarios_filtrados.items() if v.get("activo", True) == activo_bool}
+    
+    # Remover passwords
+    for user in usuarios_filtrados.values():
+        user.pop("password", None)
+    
+    return jsonify(usuarios_filtrados), 200
+
+@app.route('/api/admin/usuarios/<user_id>/rol', methods=['PUT'])
+def actualizar_rol_usuario(user_id):
+    """
+    Actualizar rol de un usuario (solo ADMIN)
+    TODO: UPDATE usuarios SET rol = %s WHERE id = %s
+    """
+    # TODO: Verificar rol ADMIN
+    
+    data = request.json
+    nuevo_rol = data.get("rol")
+    admin_id = data.get("admin_id")
+    
+    if nuevo_rol not in ROLES:
+        return jsonify({"error": "rol_invalido", "roles_validos": list(ROLES.keys())}), 400
+    
+    if user_id not in USERS:
+        return jsonify({"error": "usuario_no_encontrado"}), 404
+    
+    rol_anterior = USERS[user_id].get("rol")
+    USERS[user_id]["rol"] = nuevo_rol
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        None,
+        admin_id,
+        "CAMBIO_ROL_USUARIO",
+        f"Usuario {user_id}: {rol_anterior} -> {nuevo_rol}"
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "user_id": user_id,
+        "rol_anterior": rol_anterior,
+        "rol_nuevo": nuevo_rol
+    }), 200
+
+@app.route('/api/admin/usuarios/<user_id>/activar', methods=['PUT'])
+def activar_desactivar_usuario(user_id):
+    """
+    Activar o desactivar usuario
+    TODO: UPDATE usuarios SET activo = %s WHERE id = %s
+    """
+    # TODO: Verificar rol ADMIN
+    
+    data = request.json
+    activo = data.get("activo")
+    admin_id = data.get("admin_id")
+    
+    if user_id not in USERS:
+        return jsonify({"error": "usuario_no_encontrado"}), 404
+    
+    USERS[user_id]["activo"] = activo
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        None,
+        admin_id,
+        "USUARIO_ACTIVADO" if activo else "USUARIO_DESACTIVADO",
+        f"Usuario {user_id}"
+    )
+    
+    return jsonify({
+        "status": "ok",
+        "user_id": user_id,
+        "activo": activo
+    }), 200
+
+@app.route('/api/admin/configuracion', methods=['GET'])
+def obtener_configuracion():
+    """
+    Obtener configuración del sistema
+    TODO: SELECT * FROM configuracion_sistema
+    """
+    # TODO: Verificar rol ADMIN
+    
+    configuracion = {
+        "tipos_servicio": TIPOS_SERVICIO,
+        "estados_flujo": ESTADOS_FLUJO,
+        "roles": ROLES,
+        "extensiones_permitidas": list(app.config['ALLOWED_EXTENSIONS']),
+        "tamano_maximo_archivo_mb": app.config['MAX_CONTENT_LENGTH'] / (1024 * 1024)
+    }
+    
+    return jsonify(configuracion), 200
+
+@app.route('/api/admin/configuracion', methods=['PUT'])
+def actualizar_configuracion():
+    """
+    Actualizar configuración del sistema
+    TODO: UPDATE configuracion_sistema SET valor = %s WHERE clave = %s
+    RNF: Módulo de administración para actualizar sin modificar código
+    """
+    # TODO: Verificar rol ADMIN
+    
+    data = request.json
+    admin_id = data.get("admin_id")
+    
+    # Actualizar configuraciones permitidas
+    if "tamano_maximo_archivo_mb" in data:
+        app.config['MAX_CONTENT_LENGTH'] = data["tamano_maximo_archivo_mb"] * 1024 * 1024
+    
+    if "extensiones_permitidas" in data:
+        app.config['ALLOWED_EXTENSIONS'] = set(data["extensiones_permitidas"])
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        None,
+        admin_id,
+        "CONFIGURACION_ACTUALIZADA",
+        json.dumps(data)
+    )
+    
+    return jsonify({"status": "ok", "mensaje": "Configuración actualizada"}), 200
+
+# ------------------------------
+# MÓDULO: BÚSQUEDA Y FILTROS AVANZADOS
+# ------------------------------
+
+@app.route('/api/buscar', methods=['GET'])
+def buscar_solicitudes():
+    """
+    Búsqueda avanzada de solicitudes
+    TODO: Implementar búsqueda full-text en PostgreSQL
+    """
+    query = request.args.get('q', '').lower()
+    tipo_servicio = request.args.get('tipo_servicio')
+    estado = request.args.get('estado')
+    fecha_desde = request.args.get('fecha_desde')
+    fecha_hasta = request.args.get('fecha_hasta')
+    usuario_id = request.args.get('usuario_id')
+    
+    resultados = []
+    
+    for req_id, req in REQUESTS.items():
+        # Filtro de búsqueda de texto
+        if query:
+            texto_busqueda = f"{req.get('numero_expediente', '')} {req.get('tipo_servicio', '')}".lower()
+            if query not in texto_busqueda:
+                continue
+        
+        # Filtros adicionales
+        if tipo_servicio and req.get('tipo_servicio') != tipo_servicio:
+            continue
+        
+        if estado and req.get('estado') != estado:
+            continue
+        
+        if usuario_id and req.get('user_id') != usuario_id:
+            continue
+        
+        if fecha_desde and req.get('fecha_creacion', '') < fecha_desde:
+            continue
+        
+        if fecha_hasta and req.get('fecha_creacion', '') > fecha_hasta:
+            continue
+        
+        resultados.append({
+            "id": req_id,
+            "numero_expediente": req.get("numero_expediente"),
+            "tipo_servicio": req.get("tipo_servicio"),
+            "estado": req.get("estado"),
+            "fecha_creacion": req.get("fecha_creacion"),
+            "user_id": req.get("user_id")
+        })
+    
+    return jsonify({
+        "total": len(resultados),
+        "resultados": resultados
+    }), 200
+
+# ------------------------------
+# MÓDULO: RESUBMISIÓN DE SOLICITUDES
+# ------------------------------
+
+@app.route('/api/solicitud/<req_id>/resubmitir', methods=['POST'])
+def resubmitir_solicitud(req_id):
+    """
+    Usuario resubmite solicitud devuelta con correcciones
+    TODO: 
+    1. Validar que la solicitud está en estado DEVUELTO_VUS o DEVUELTO_UPC
+    2. Actualizar documentos si es necesario
+    3. Cambiar estado según de dónde fue devuelta
+    """
+    if req_id not in REQUESTS:
+        return jsonify({"error": "solicitud_no_encontrada"}), 404
+    
+    solicitud = REQUESTS[req_id]
+    
+    # Validar que está devuelta
+    if solicitud["estado"] not in ["DEVUELTO_VUS", "DEVUELTO_UPC"]:
+        return jsonify({
+            "error": "solicitud_no_devuelta",
+            "estado_actual": solicitud["estado"]
+        }), 400
+    
+    data = request.form
+    files = request.files
+    user_id = data.get("user_id")
+    
+    # Verificar que es el dueño
+    if solicitud["user_id"] != user_id:
+        return jsonify({"error": "no_autorizado"}), 403
+    
+    # Actualizar documentos si hay nuevos
+    for key in files:
+        file = files[key]
+        if file and validar_archivo(file.filename):
+            filename = secure_filename(file.filename)
+            doc_id = generate_id()
+            extension = filename.rsplit('.', 1)[1].lower()
+            unique_filename = f"{req_id}_{doc_id}.{extension}"
+            
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+            file.save(filepath)
+            
+            # Reemplazar documento existente
+            solicitud["documentos"][key] = {
+                "id": doc_id,
+                "nombre_original": filename,
+                "nombre_storage": unique_filename,
+                "ruta": filepath,
+                "tipo": key,
+                "fecha_subida": datetime.now().isoformat()
+            }
+    
+    # Actualizar datos del formulario si se proporcionan
+    if data.get("datos_formulario"):
+        solicitud["datos_formulario"] = json.loads(data.get("datos_formulario"))
+    
+    # Determinar nuevo estado según de dónde fue devuelta
+    estado_anterior = solicitud["estado"]
+    if estado_anterior == "DEVUELTO_VUS":
+        nuevo_estado = "EN_REVISION_VUS"
+    elif estado_anterior == "DEVUELTO_UPC":
+        nuevo_estado = "EN_EVALUACION_UPC"
+    else:
+        nuevo_estado = "EN_REVISION_VUS"
+    
+    solicitud["estado"] = nuevo_estado
+    solicitud["fecha_actualizacion"] = datetime.now().isoformat()
+    solicitud["fecha_resubmision"] = datetime.now().isoformat()
+    
+    # Actualizar historial
+    solicitud["historial_estados"].append({
+        "estado": nuevo_estado,
+        "fecha": datetime.now().isoformat(),
+        "usuario": user_id,
+        "comentario": "Solicitud resubmitida con correcciones"
+    })
+    
+    # Registrar auditoría
+    registrar_auditoria(
+        req_id,
+        user_id,
+        "SOLICITUD_RESUBMITIDA",
+        f"Estado anterior: {estado_anterior}"
+    )
+    
+    # Notificar al área correspondiente
+    mensaje_notif = f"Solicitud {solicitud['numero_expediente']} ha sido corregida y resubmitida."
+    # TODO: Notificar a VUS o UPC según corresponda
+    
+    return jsonify({
+        "status": "ok",
+        "solicitud_id": req_id,
+        "estado_anterior": estado_anterior,
+        "estado_nuevo": nuevo_estado,
+        "mensaje": "Solicitud resubmitida exitosamente"
+    }), 200
+
+# ------------------------------
+# MÓDULO: EXPORTACIÓN DE DATOS
+# ------------------------------
+
+@app.route('/api/exportar/solicitudes', methods=['GET'])
+def exportar_solicitudes():
+    """
+    Exportar solicitudes en formato CSV o Excel
+    TODO: Generar archivo Excel con openpyxl o CSV
+    """
+    # TODO: Verificar permisos - solo staff
+    
+    formato = request.args.get('formato', 'csv')  # csv, excel
+    
+    # Obtener solicitudes con filtros
+    solicitudes = list(REQUESTS.values())
+    
+    # TODO: Generar archivo en formato solicitado
+    # if formato == 'excel':
+    #     return generar_excel(solicitudes)
+    # else:
+    #     return generar_csv(solicitudes)
+    
+    return jsonify({
+        "mensaje": "Funcionalidad de exportación en desarrollo",
+        "total_registros": len(solicitudes)
+    }), 200
+
+# ------------------------------
+# ENDPOINTS DE SALUD Y MONITOREO
+# ------------------------------
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """
+    Health check endpoint para monitoreo
+    RNF: Disponibilidad 99.9% uptime
+    """
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": "1.0.0"
+    }), 200
+
+@app.route('/api/status', methods=['GET'])
+def system_status():
+    """
+    Estado del sistema y métricas básicas
+    """
+    return jsonify({
+        "status": "operational",
+        "total_solicitudes": len(REQUESTS),
+        "total_usuarios": len(USERS),
+        "total_certificados": len(CERTIFICADOS),
+        "memoria_uso": "N/A",  # TODO: Obtener uso real de memoria
+        "base_datos": "conectada",  # TODO: Verificar conexión a PostgreSQL
+        "timestamp": datetime.now().isoformat()
+    }), 200
+
+# ------------------------------
+# MANEJO DE ERRORES GLOBALES
+# ------------------------------
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "recurso_no_encontrado"}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({"error": "error_interno_servidor"}), 500
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    return jsonify({
+        "error": "archivo_demasiado_grande",
+        "max_size_mb": app.config['MAX_CONTENT_LENGTH'] / (1024 * 1024)
+    }), 413
+
+# ------------------------------
+# DOCUMENTACIÓN DE LA API
+# ------------------------------
+
+@app.route('/api/docs', methods=['GET'])
+def api_documentation():
+    """
+    Documentación básica de la API
+    TODO: Implementar Swagger/OpenAPI completo
+    """
+    endpoints = {
+        "autenticacion": {
+            "POST /api/auth/login": "Iniciar sesión",
+            "POST /api/register": "Registrar nuevo usuario"
+        },
+        "solicitudes": {
+            "POST /api/solicitud": "Crear nueva solicitud",
+            "GET /api/solicitud/<id>": "Obtener solicitud",
+            "GET /api/solicitudes": "Listar solicitudes",
+            "POST /api/solicitud/<id>/resubmitir": "Resubmitir solicitud devuelta"
+        },
+        "vus": {
+            "POST /api/vus/validar/<id>": "Validar solicitud (Cumple/No Cumple)",
+            "POST /api/vus/entregar/<id>": "Registrar entrega de certificado"
+        },
+        "upc": {
+            "POST /api/upc/recibir/<id>": "Recibir solicitud en UPC",
+            "POST /api/upc/evaluar/<id>": "Evaluar solicitud técnicamente",
+            "POST /api/upc/reasignar/<id>": "Reasignar a otro técnico"
+        },
+        "direccion": {
+            "GET /api/direccion/pendientes": "Solicitudes pendientes de firma",
+            "POST /api/direccion/firma-rechazo/<id>": "Firmar comunicación de rechazo",
+            "POST /api/direccion/firma-aprobacion/<id>": "Firmar certificado aprobado"
+        },
+        "dncd": {
+            "GET /api/dncd/pendientes": "Solicitudes en DNCD",
+            "POST /api/dncd/recibir/<id>": "Recibir solicitud en DNCD",
+            "POST /api/dncd/firma/<id>": "Firmar y autorizar certificado"
+        },
+        "certificados": {
+            "GET /api/certificado/<id>": "Obtener certificado",
+            "GET /api/certificado/<id>/descargar": "Descargar PDF certificado",
+            "GET /api/certificado/<id>/validar": "Validar autenticidad"
+        },
+        "notificaciones": {
+            "GET /api/notificaciones/<user_id>": "Obtener notificaciones de usuario",
+            "POST /api/notificaciones/<id>/marcar-leida": "Marcar como leída"
+        },
+        "catalogo": {
+            "GET /api/catalogo": "Listar servicios disponibles",
+            "POST /api/admin/catalogo": "Crear servicio (ADMIN)",
+            "POST /api/admin/requisitos": "Crear requisito (ADMIN)",
+            "GET /api/servicios/<id>/requisitos": "Obtener requisitos de servicio"
+        },
+        "reportes": {
+            "GET /api/reportes/estadisticas": "Estadísticas generales",
+            "GET /api/reportes/solicitudes-periodo": "Reporte por período",
+            "GET /api/reportes/rendimiento-tecnicos": "Rendimiento de técnicos"
+        },
+        "auditoria": {
+            "GET /api/auditoria/<solicitud_id>": "Auditoría de solicitud",
+            "GET /api/auditoria": "Auditoría global (ADMIN)"
+        },
+        "administracion": {
+            "GET /api/admin/usuarios": "Listar usuarios (ADMIN)",
+            "PUT /api/admin/usuarios/<id>/rol": "Cambiar rol de usuario (ADMIN)",
+            "PUT /api/admin/usuarios/<id>/activar": "Activar/desactivar usuario (ADMIN)",
+            "GET /api/admin/configuracion": "Obtener configuración (ADMIN)",
+            "PUT /api/admin/configuracion": "Actualizar configuración (ADMIN)",
+            "POST /api/admin/verificar-vencimientos": "Verificar certificados por vencer"
+        },
+        "utilidades": {
+            "GET /api/buscar": "Búsqueda avanzada de solicitudes",
+            "GET /api/exportar/solicitudes": "Exportar solicitudes (CSV/Excel)",
+            "GET /api/health": "Health check",
+            "GET /api/status": "Estado del sistema"
+        }
+    }
+    
+    return jsonify({
+        "nombre": "API Sistema de Gestión de Sustancias Controladas",
+        "version": "1.0.0",
+        "descripcion": "API REST para gestión de certificados Clase A y B, permisos de importación según Ley 50-88",
+        "base_url": request.host_url + "api",
+        "endpoints": endpoints,
+        "nota": "Esta es una documentación básica. Para detalles completos, consultar Swagger/OpenAPI cuando esté disponible."
+    }), 200
+
+# ------------------------------
+# INICIALIZACIÓN Y DATOS DE PRUEBA
+# ------------------------------
+
+def inicializar_datos_prueba():
+    """
+    Crea datos de prueba para desarrollo
+    TODO: Eliminar en producción
+    """
+    # Crear usuarios de prueba
+    admin_id = generate_id()
+    USERS[admin_id] = {
+        "id": admin_id,
+        "name": "Admin Sistema",
+        "email": "admin@msp.gob.do",
+        "password": "admin123",  # TODO: Hash
+        "rol": "ADMIN",
+        "tipo_usuario": "STAFF",
+        "activo": True,
+        "fecha_registro": datetime.now().isoformat()
+    }
+    
+    vus_id = generate_id()
+    USERS[vus_id] = {
+        "id": vus_id,
+        "name": "Usuario VUS",
+        "email": "vus@msp.gob.do",
+        "password": "vus123",
+        "rol": "VUS",
+        "tipo_usuario": "STAFF",
+        "activo": True,
+        "fecha_registro": datetime.now().isoformat()
+    }
+    
+    tecnico_id = generate_id()
+    USERS[tecnico_id] = {
+        "id": tecnico_id,
+        "name": "Técnico UPC",
+        "email": "tecnico@msp.gob.do",
+        "password": "tecnico123",
+        "rol": "TECNICO_UPC",
+        "tipo_usuario": "STAFF",
+        "activo": True,
+        "fecha_registro": datetime.now().isoformat()
+    }
+    
+    direccion_id = generate_id()
+    USERS[direccion_id] = {
+        "id": direccion_id,
+        "name": "Director MSP",
+        "email": "direccion@msp.gob.do",
+        "password": "direccion123",
+        "rol": "DIRECCION",
+        "tipo_usuario": "STAFF",
+        "activo": True,
+        "fecha_registro": datetime.now().isoformat()
+    }
+
+    dncd_id = generate_id()
+    USERS[dncd_id] = {
+        "id": dncd_id,
+        "name": "Usuario DNCD",
+        "email": "usuario@dncd.gob.do",
+        "password": "dncd123",
+        "rol": "DNCD",
+        "tipo_usuario": "STAFF",
+        "activo": True,
+        "fecha_registro": datetime.now().isoformat()
+    }
+
+    usuario_id = generate_id()
+    USERS[usuario_id] = {
+        "id": usuario_id,
+        "name": "Juan Pérez",
+        "email": "juan.perez@example.com",
+        "password": "user123",
+        "rol": "USUARIO",
+        "tipo_usuario": "PROFESIONAL",
+        "documento_identidad": "001-0000000-0",
+        "activo": True,
+        "fecha_registro": datetime.now().isoformat()
+    }
+
+    # Crear servicios de catálogo
+    for codigo, nombre in TIPOS_SERVICIO.items():
+        serv_id = generate_id()
+        CATALOGO_SERVICIOS[serv_id] = {
+            "id": serv_id,
+            "codigo": codigo,
+            "nombre": nombre,
+            "descripcion": f"Servicio de {nombre}",
+            "costo": 1000.00,
+            "tiempo_estimado_dias": 15,
+            "activo": True
+        }
+
+    print("✅ Datos de prueba inicializados")
+    print(f"   - Usuarios creados: {len(USERS)}")
+    print(f"   - Servicios en catálogo: {len(CATALOGO_SERVICIOS)}")
+    print("\n📧 Credenciales de prueba:")
+    print(f"   Admin: admin@msp.gob.do / admin123")
+    print(f"   VUS: vus@msp.gob.do / vus123")
+    print(f"   Técnico: tecnico@msp.gob.do / tecnico123")
+    print(f"   Dirección: direccion@msp.gob.do / direccion123")
+    print(f"   DNCD: usuario@dncd.gob.do / dncd123")
+    print(f"   Usuario: juan.perez@example.com / user123")
+
+# ------------------------------
+# Main - Punto de Entrada
+# ------------------------------
+if __name__ == '__main__':
+    print("="*60)
+    print("🏥 Sistema de Gestión de Sustancias Controladas")
+    print("   Ministerio de Salud Pública y DNCD")
+    print("   Versión 1.0.0 - Basado en Ley 50-88")
+    print("="*60)
+    
+    # Crear directorio para uploads si no existe
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+    # Inicializar datos de prueba
+    inicializar_datos_prueba()
+
+    print("\n🚀 Iniciando servidor Flask...")
+    print("   URL: http://localhost:5000")
+    print("   Documentación: http://localhost:5000/api/docs")
+    print("\n⚠️  NOTAS IMPORTANTES:")
+    print("   - Este código usa datos en memoria (NO persistentes)")
+    print("   - Migrar a PostgreSQL antes de producción")
+    print("   - Implementar autenticación JWT real")
+    print("   - Configurar BlobStorage/S3 para archivos")
+    print("   - Integrar firma digital certificada")
+    print("   - Implementar rate limiting y seguridad adicional")
+    print("="*60 + "\n")
+
+    # RNF: Disponibilidad 99.9% uptime
+    # TODO: En producción usar Gunicorn/uWSGI con nginx
+    # TODO: Configurar auto-scaling y load balancing
+    app.run(debug=True, host='0.0.0.0', port=5000)

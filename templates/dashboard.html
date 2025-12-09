@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Sistema de Gestión de Sustancias Controladas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 20px;
+        }
+        .user-info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .user-name {
+            font-size: 14px;
+        }
+        .logout-btn {
+            background-color: #e74c3c;
+            color: white;
+            padding: 8px 15px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .logout-btn:hover {
+            background-color: #c0392b;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        .welcome {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .welcome h2 {
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+        .welcome p {
+            color: #7f8c8d;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .btn {
+            padding: 10px 20px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-primary {
+            background-color: #3498db;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+        .btn-secondary {
+            background-color: #95a5a6;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #7f8c8d;
+        }
+        .solicitudes-section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .section-title {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 18px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .solicitudes-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .solicitudes-table th {
+            background-color: #ecf0f1;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            color: #2c3e50;
+            border-bottom: 2px solid #bdc3c7;
+        }
+        .solicitudes-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        .solicitudes-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .estado-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .estado-recibido {
+            background-color: #3498db;
+            color: white;
+        }
+        .estado-devuelto {
+            background-color: #e74c3c;
+            color: white;
+        }
+        .estado-asignado {
+            background-color: #f39c12;
+            color: white;
+        }
+        .estado-evaluacion {
+            background-color: #e67e22;
+            color: white;
+        }
+        .estado-aprobado {
+            background-color: #27ae60;
+            color: white;
+        }
+        .estado-rechazado {
+            background-color: #c0392b;
+            color: white;
+        }
+        .estado-pendiente {
+            background-color: #9b59b6;
+            color: white;
+        }
+        .estado-enviado {
+            background-color: #16a085;
+            color: white;
+        }
+        .estado-entregado {
+            background-color: #2ecc71;
+            color: white;
+        }
+        .action-link {
+            color: #3498db;
+            text-decoration: none;
+        }
+        .action-link:hover {
+            text-decoration: underline;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+        .empty-state p {
+            margin-bottom: 20px;
+        }
+        @media (max-width: 768px) {
+            .solicitudes-table {
+                font-size: 12px;
+            }
+            .solicitudes-table th,
+            .solicitudes-table td {
+                padding: 8px;
+            }
+            .actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Sistema de Gestión de Sustancias Controladas</h1>
+        <div class="user-info">
+            <span class="user-name">{{ session.name }} ({{ session.rol_codigo }})</span>
+            <a href="/logout" class="logout-btn">Cerrar Sesión</a>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="welcome">
+            <h2>Bienvenido, {{ session.name }}</h2>
+            <p>Rol: {{ session.rol_codigo }}</p>
+            
+            {% if session.rol_codigo == 'USUARIO' %}
+            <div class="actions">
+                <a href="/solicitudes/nueva" class="btn btn-primary">Nueva Solicitud</a>
+                <a href="/certificados" class="btn btn-secondary">Mis Certificados</a>
+            </div>
+            {% elif session.rol_codigo == 'ADMIN' %}
+            <div class="actions">
+                <a href="/admin/usuarios" class="btn btn-primary">Gestionar Usuarios</a>
+                <a href="/admin/servicios" class="btn btn-primary">Gestionar Servicios</a>
+                <a href="/admin/auditoria" class="btn btn-secondary">Auditoría</a>
+                <a href="/api/estadisticas" class="btn btn-secondary">Estadísticas</a>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="solicitudes-section">
+            <h3 class="section-title">
+                {% if session.rol_codigo == 'USUARIO' %}
+                Mis Solicitudes
+                {% elif session.rol_codigo == 'VUS' %}
+                Solicitudes en Ventanilla Única
+                {% elif session.rol_codigo == 'TECNICO_UPC' %}
+                Solicitudes para Evaluación Técnica
+                {% elif session.rol_codigo == 'ENCARGADO_UPC' %}
+                Solicitudes de Unidad de Productos Controlados
+                {% elif session.rol_codigo == 'DIRECCION' %}
+                Solicitudes Pendientes de Firma
+                {% elif session.rol_codigo == 'DNCD' %}
+                Solicitudes DNCD
+                {% else %}
+                Todas las Solicitudes
+                {% endif %}
+            </h3>
+
+            {% if solicitudes %}
+            <table class="solicitudes-table">
+                <thead>
+                    <tr>
+                        <th>Expediente</th>
+                        <th>Servicio</th>
+                        <th>Estado</th>
+                        <th>Fecha Creación</th>
+                        {% if session.rol_codigo != 'USUARIO' %}
+                        <th>Solicitante</th>
+                        {% endif %}
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for solicitud in solicitudes %}
+                    <tr>
+                        <td>{{ solicitud.numero_expediente }}</td>
+                        <td>{{ solicitud.servicio.nombre }}</td>
+                        <td>
+                            <span class="estado-badge 
+                                {% if solicitud.estado_codigo == 'RECIBIDO' %}estado-recibido
+                                {% elif solicitud.estado_codigo == 'DEVUELTO_VUS' %}estado-devuelto
+                                {% elif solicitud.estado_codigo == 'ASIGNADO_UPC' %}estado-asignado
+                                {% elif solicitud.estado_codigo == 'EN_EVALUACION' %}estado-evaluacion
+                                {% elif solicitud.estado_codigo == 'APROBADO_UPC' %}estado-aprobado
+                                {% elif solicitud.estado_codigo == 'RECHAZADO_UPC' %}estado-rechazado
+                                {% elif 'PENDIENTE' in solicitud.estado_codigo %}estado-pendiente
+                                {% elif 'ENVIADO' in solicitud.estado_codigo %}estado-enviado
+                                {% elif solicitud.estado_codigo == 'APROBADO_FINAL' %}estado-aprobado
+                                {% elif solicitud.estado_codigo == 'ENTREGADO' %}estado-entregado
+                                {% endif %}">
+                                {{ solicitud.estado.descripcion }}
+                            </span>
+                        </td>
+                        <td>{{ solicitud.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</td>
+                        {% if session.rol_codigo != 'USUARIO' %}
+                        <td>{{ solicitud.usuario.name }}</td>
+                        {% endif %}
+                        <td>
+                            <a href="/solicitudes/{{ solicitud.id }}" class="action-link">Ver Detalles</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <p>No hay solicitudes para mostrar.</p>
+                {% if session.rol_codigo == 'USUARIO' %}
+                <a href="/solicitudes/nueva" class="btn btn-primary">Crear Primera Solicitud</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

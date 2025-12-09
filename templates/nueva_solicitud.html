@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nueva Solicitud - Sistema de Gestión de Sustancias Controladas</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 20px;
+        }
+        .back-link {
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            background-color: #34495e;
+            border-radius: 4px;
+        }
+        .back-link:hover {
+            background-color: #4a5f7f;
+        }
+        .container {
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        .form-card {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #34495e;
+            font-weight: bold;
+        }
+        select,
+        input[type="text"],
+        input[type="number"],
+        input[type="file"],
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        input[type="file"] {
+            padding: 8px;
+            cursor: pointer;
+        }
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        select:focus,
+        input:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        .service-info {
+            background-color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+            display: none;
+        }
+        .service-info.active {
+            display: block;
+        }
+        .service-info p {
+            margin: 5px 0;
+            color: #2c3e50;
+        }
+        .service-info strong {
+            color: #2980b9;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .btn:hover {
+            background-color: #229954;
+        }
+        .help-text {
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-top: 3px;
+        }
+        .required {
+            color: #e74c3c;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Nueva Solicitud</h1>
+        <a href="/dashboard" class="back-link">← Volver al Dashboard</a>
+    </div>
+
+    <div class="container">
+        <div class="form-card">
+            <h2>Crear Nueva Solicitud</h2>
+            
+            <form method="POST" action="/solicitudes/nueva" enctype="multipart/form-data">
+                <div class="form-group">
+                    <label for="servicio_id">Tipo de Servicio <span class="required">*</span></label>
+                    <select id="servicio_id" name="servicio_id" required onchange="mostrarInfoServicio()">
+                        <option value="">-- Seleccione un servicio --</option>
+                        {% for servicio in servicios %}
+                        <option 
+                            value="{{ servicio.id }}"
+                            data-costo="{{ servicio.costo }}"
+                            data-tiempo="{{ servicio.tiempo_estimado_dias }}"
+                            data-descripcion="{{ servicio.descripcion }}"
+                            data-dncd="{{ servicio.requiere_dncd }}">
+                            {{ servicio.nombre }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    
+                    <div id="service-info" class="service-info">
+                        <p><strong>Descripción:</strong> <span id="info-descripcion"></span></p>
+                        <p><strong>Costo:</strong> RD$ <span id="info-costo"></span></p>
+                        <p><strong>Tiempo estimado:</strong> <span id="info-tiempo"></span> días</p>
+                        <p id="info-dncd" style="display:none;"><strong>⚠️ Requiere firma DNCD</strong></p>
+                    </div>
+                </div>
+
+                <!-- Formulario Dinámico según tipo de servicio -->
+                <div id="form-clase-a" class="dynamic-form" style="display:none;">
+                    <h3 style="color: #2980b9; margin: 20px 0 15px 0;">Datos del Profesional de Salud</h3>
+                    
+                    <div class="form-group">
+                        <label for="profesion">Profesión <span class="required">*</span></label>
+                        <select id="profesion" name="profesion">
+                            <option value="">-- Seleccione --</option>
+                            <option value="MEDICO">Médico</option>
+                            <option value="VETERINARIO">Veterinario</option>
+                            <option value="ODONTOLOGO">Odontólogo</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cedula_profesional">Cédula de Identidad <span class="required">*</span></label>
+                        <input type="text" id="cedula_profesional" name="cedula_profesional" placeholder="000-0000000-0">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="numero_exequatur">Número de Exequátur <span class="required">*</span></label>
+                        <input type="text" id="numero_exequatur" name="numero_exequatur" placeholder="Ej: 12345">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="universidad">Universidad de Graduación <span class="required">*</span></label>
+                        <input type="text" id="universidad" name="universidad" placeholder="Nombre de la universidad">
+                    </div>
+
+                    <div class="help-text" style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 15px 0;">
+                        <strong>📋 Documentos requeridos:</strong><br>
+                        • Copia de cédula de identidad<br>
+                        • Copia del título universitario<br>
+                        • Copia del exequátur<br>
+                        • Comprobante de pago de RD$150.00 (BanReservas)<br>
+                        <strong>Validez:</strong> 3 años
+                    </div>
+                </div>
+
+                <div id="form-clase-b-privado" class="dynamic-form" style="display:none;">
+                    <h3 style="color: #2980b9; margin: 20px 0 15px 0;">Datos del Establecimiento</h3>
+                    
+                    <div class="form-group">
+                        <label for="tipo_establecimiento">Tipo de Establecimiento <span class="required">*</span></label>
+                        <select id="tipo_establecimiento" name="tipo_establecimiento">
+                            <option value="">-- Seleccione --</option>
+                            <option value="FARMACIA">Farmacia</option>
+                            <option value="LABORATORIO">Laboratorio</option>
+                            <option value="DISTRIBUIDORA">Distribuidora</option>
+                            <option value="CLINICA">Clínica</option>
+                            <option value="INDUSTRIA_QUIMICA">Industria Química</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nombre_establecimiento">Nombre del Establecimiento <span class="required">*</span></label>
+                        <input type="text" id="nombre_establecimiento" name="nombre_establecimiento">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="rnc_establecimiento">RNC del Establecimiento <span class="required">*</span></label>
+                        <input type="text" id="rnc_establecimiento" name="rnc_establecimiento" placeholder="000-00000-0">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="direccion_establecimiento">Dirección del Establecimiento <span class="required">*</span></label>
+                        <textarea id="direccion_establecimiento" name="direccion_establecimiento" rows="2"></textarea>
+                    </div>
+
+                    <h3 style="color: #2980b9; margin: 20px 0 15px 0;">Representante Legal</h3>
+                    
+                    <div class="form-group">
+                        <label for="nombre_representante">Nombre Completo <span class="required">*</span></label>
+                        <input type="text" id="nombre_representante" name="nombre_representante">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cedula_representante">Cédula <span class="required">*</span></label>
+                        <input type="text" id="cedula_representante" name="cedula_representante" placeholder="000-0000000-0">
+                    </div>
+
+                    <h3 style="color: #2980b9; margin: 20px 0 15px 0;">Director Técnico</h3>
+                    
+                    <div class="form-group">
+                        <label for="nombre_director">Nombre Completo <span class="required">*</span></label>
+                        <input type="text" id="nombre_director" name="nombre_director">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cedula_director">Cédula <span class="required">*</span></label>
+                        <input type="text" id="cedula_director" name="cedula_director" placeholder="000-0000000-0">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="exequatur_director">Exequátur del Director Técnico <span class="required">*</span></label>
+                        <input type="text" id="exequatur_director" name="exequatur_director">
+                    </div>
+
+                    <div class="help-text" style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 15px 0;">
+                        <strong>📋 Documentos requeridos:</strong><br>
+                        • Cédulas del representante legal y director técnico<br>
+                        • Títulos universitarios<br>
+                        • Exequátur del director técnico<br>
+                        • Permiso de habilitación vigente del establecimiento<br>
+                        • Estatutos de la empresa (si aplica)<br>
+                        • Comprobante de pago de RD$500.00 por cada actividad<br>
+                        <strong>Validez:</strong> 1 año
+                    </div>
+                </div>
+
+                <div id="form-clase-b-publico" class="dynamic-form" style="display:none;">
+                    <h3 style="color: #2980b9; margin: 20px 0 15px 0;">Datos de la Institución Pública</h3>
+                    
+                    <div class="form-group">
+                        <label for="nombre_institucion">Nombre de la Institución <span class="required">*</span></label>
+                        <input type="text" id="nombre_institucion" name="nombre_institucion" placeholder="Ej: Hospital General de la Plaza de la Salud">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="direccion_institucion">Dirección <span class="required">*</span></label>
+                        <textarea id="direccion_institucion" name="direccion_institucion" rows="2"></textarea>
+                    </div>
+
+                    <h3 style="color: #2980b9; margin: 20px 0 15px 0;">Representante de la Entidad</h3>
+                    
+                    <div class="form-group">
+                        <label for="nombre_representante_pub">Nombre Completo <span class="required">*</span></label>
+                        <input type="text" id="nombre_representante_pub" name="nombre_representante_pub">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cargo_representante">Cargo <span class="required">*</span></label>
+                        <input type="text" id="cargo_representante" name="cargo_representante" placeholder="Ej: Director">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cedula_representante_pub">Cédula <span class="required">*</span></label>
+                        <input type="text" id="cedula_representante_pub" name="cedula_representante_pub" placeholder="000-0000000-0">
+                    </div>
+
+                    <h3 style="color: #2980b9; margin: 20px 0 15px 0;">Farmacéutico Responsable</h3>
+                    
+                    <div class="form-group">
+                        <label for="nombre_farmaceutico">Nombre Completo <span class="required">*</span></label>
+                        <input type="text" id="nombre_farmaceutico" name="nombre_farmaceutico">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cedula_farmaceutico">Cédula <span class="required">*</span></label>
+                        <input type="text" id="cedula_farmaceutico" name="cedula_farmaceutico" placeholder="000-0000000-0">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="exequatur_farmaceutico">Exequátur <span class="required">*</span></label>
+                        <input type="text" id="exequatur_farmaceutico" name="exequatur_farmaceutico">
+                    </div>
+
+                    <div class="help-text" style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 15px 0;">
+                        <strong>📋 Documentos requeridos:</strong><br>
+                        • Cédulas del representante y farmacéutico responsable<br>
+                        • Títulos universitarios<br>
+                        • Exequátur del farmacéutico<br>
+                        • Certificado de habilitación (si está disponible)<br>
+                        <strong>Costo:</strong> Exonerado de pago<br>
+                        <strong>Validez:</strong> 1 año
+                    </div>
+                </div>
+
+                <div id="form-importacion-materia-prima" class="dynamic-form" style="display:none;">
+                    <h3 style="color: #2980b9; margin: 20px 0 15px 0;">Fase 1: Solicitud Inicial</h3>
+                    
+                    <div class="form-group">
+                        <label for="nombre_importador">Nombre del Importador <span class="required">*</span></label>
+                        <input type="text" id="nombre_importador" name="nombre_importador">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nombre_exportador">Nombre del Exportador <span class="required">*</span></label>
+                        <input type="text" id="nombre_exportador" name="nombre_exportador">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="pais_origen">País de Origen <span class="required">*</span></label>
+                        <input type="text" id="pais_origen" name="pais_origen">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sustancia_controlada">Sustancia Controlada <span class="required">*</span></label>
+                        <input type="text" id="sustancia_controlada" name="sustancia_controlada" placeholder="Nombre de la sustancia">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cantidad_importacion">Cantidad a Importar <span class="required">*</span></label>
+                        <input type="text" id="cantidad_importacion" name="cantidad_importacion" placeholder="Ej: 500 kg">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="puerto_entrada">Puerto de Entrada <span class="required">*</span></label>
+                        <select id="puerto_entrada" name="puerto_entrada">
+                            <option value="">-- Seleccione --</option>
+                            <option value="HAINA">Puerto de Haina</option>
+                            <option value="CAUCEDO">Puerto de Caucedo</option>
+                            <option value="RIO_HAINA">Puerto Río Haina</option>
+                            <option value="AEROPUERTO_LAS_AMERICAS">Aeropuerto Las Américas</option>
+                            <option value="AEROPUERTO_CIBAO">Aeropuerto del Cibao</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="via_transporte">Vía de Transporte <span class="required">*</span></label>
+                        <select id="via_transporte" name="via_transporte">
+                            <option value="">-- Seleccione --</option>
+                            <option value="MARITIMO">Marítimo</option>
+                            <option value="AEREO">Aéreo</option>
+                            <option value="TERRESTRE">Terrestre</option>
+                        </select>
+                    </div>
+
+                    <div class="help-text" style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 15px 0;">
+                        <strong>📋 Documentos Fase 1:</strong><br>
+                        • Carta de solicitud firmada<br>
+                        • Factura proforma<br>
+                        • Autorización de DNCD<br>
+                        <br>
+                        <strong>📋 Documentos Fase 2 (después de aprobación):</strong><br>
+                        • Permiso emitido<br>
+                        • Factura comercial<br>
+                        • Certificados de análisis<br>
+                        • Certificados de BPM (productos semielaborados)<br>
+                        • Certificado de libre venta (productos semielaborados)<br>
+                        <br>
+                        <strong>Costo:</strong> Gratuito<br>
+                        <strong>Validez:</strong> 180 días
+                    </div>
+                </div>
+
+                <div id="form-importacion-medicamentos" class="dynamic-form" style="display:none;">
+                    <h3 style="color: #2980b9; margin: 20px 0 15px 0;">Fase 1: Solicitud Inicial</h3>
+                    
+                    <div class="form-group">
+                        <label for="nombre_importador_med">Nombre del Importador <span class="required">*</span></label>
+                        <input type="text" id="nombre_importador_med" name="nombre_importador_med">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nombre_exportador_med">Nombre del Exportador <span class="required">*</span></label>
+                        <input type="text" id="nombre_exportador_med" name="nombre_exportador_med">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="pais_origen_med">País de Origen <span class="required">*</span></label>
+                        <input type="text" id="pais_origen_med" name="pais_origen_med">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nombre_medicamento">Nombre del Medicamento <span class="required">*</span></label>
+                        <input type="text" id="nombre_medicamento" name="nombre_medicamento">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="sustancia_controlada_med">Sustancia Controlada que Contiene <span class="required">*</span></label>
+                        <input type="text" id="sustancia_controlada_med" name="sustancia_controlada_med">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="presentacion">Presentación <span class="required">*</span></label>
+                        <input type="text" id="presentacion" name="presentacion" placeholder="Ej: Tabletas 10mg, Caja x 30">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="cantidad_medicamento">Cantidad a Importar <span class="required">*</span></label>
+                        <input type="text" id="cantidad_medicamento" name="cantidad_medicamento" placeholder="Ej: 1000 cajas">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="registro_sanitario">Número de Registro Sanitario <span class="required">*</span></label>
+                        <input type="text" id="registro_sanitario" name="registro_sanitario">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="numero_clase_b">Número de Certificado Clase B Vigente <span class="required">*</span></label>
+                        <input type="text" id="numero_clase_b" name="numero_clase_b">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="puerto_entrada_med">Puerto de Entrada <span class="required">*</span></label>
+                        <select id="puerto_entrada_med" name="puerto_entrada_med">
+                            <option value="">-- Seleccione --</option>
+                            <option value="HAINA">Puerto de Haina</option>
+                            <option value="CAUCEDO">Puerto de Caucedo</option>
+                            <option value="RIO_HAINA">Puerto Río Haina</option>
+                            <option value="AEROPUERTO_LAS_AMERICAS">Aeropuerto Las Américas</option>
+                            <option value="AEROPUERTO_CIBAO">Aeropuerto del Cibao</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="via_transporte_med">Vía de Transporte <span class="required">*</span></label>
+                        <select id="via_transporte_med" name="via_transporte_med">
+                            <option value="">-- Seleccione --</option>
+                            <option value="MARITIMO">Marítimo</option>
+                            <option value="AEREO">Aéreo</option>
+                            <option value="TERRESTRE">Terrestre</option>
+                        </select>
+                    </div>
+
+                    <div class="help-text" style="background: #fff3cd; padding: 10px; border-radius: 4px; margin: 15px 0;">
+                        <strong>📋 Documentos requeridos:</strong><br>
+                        • Carta de solicitud firmada<br>
+                        • Certificado Clase B vigente<br>
+                        • Registro Sanitario del medicamento<br>
+                        • Factura proforma<br>
+                        • Autorización de DNCD<br>
+                        <br>
+                        <strong>Costo:</strong> Gratuito<br>
+                        <strong>Validez:</strong> 180 días
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="observaciones">Observaciones Adicionales</label>
+                    <textarea id="observaciones" name="observaciones" placeholder="Información adicional relevante..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="documentos">Documentos de Soporte (PDF, JPG, PNG) <span class="required">*</span></label>
+                    <input type="file" id="documentos" name="documentos" multiple accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" required>
+                    <div class="help-text">
+                        <strong>Puede seleccionar múltiples archivos a la vez:</strong><br>
+                        • Windows: Mantenga presionada la tecla Ctrl y haga clic en cada archivo<br>
+                        • Mac: Mantenga presionada la tecla Cmd (⌘) y haga clic en cada archivo<br>
+                        • Formatos permitidos: PDF, JPG, PNG, DOC, DOCX (máx. 10MB por archivo)
+                    </div>
+                    <div id="file-list" style="margin-top: 10px; font-size: 13px; color: #2c3e50;"></div>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="acepto_terminos" required>
+                        Acepto que la información proporcionada es verídica y estoy consciente de las responsabilidades legales <span class="required">*</span>
+                    </label>
+                </div>
+
+                <button type="submit" class="btn">Enviar Solicitud</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // Mostrar lista de archivos seleccionados
+        document.getElementById('documentos').addEventListener('change', function(e) {
+            const fileList = document.getElementById('file-list');
+            const files = e.target.files;
+            
+            if (files.length > 0) {
+                let html = '<strong>📎 Archivos seleccionados (' + files.length + '):</strong><ul style="margin: 5px 0; padding-left: 20px;">';
+                for (let i = 0; i < files.length; i++) {
+                    const sizeMB = (files[i].size / (1024 * 1024)).toFixed(2);
+                    html += '<li>' + files[i].name + ' (' + sizeMB + ' MB)</li>';
+                }
+                html += '</ul>';
+                fileList.innerHTML = html;
+            } else {
+                fileList.innerHTML = '';
+            }
+        });
+
+        function mostrarInfoServicio() {
+            const select = document.getElementById('servicio_id');
+            const selectedOption = select.options[select.selectedIndex];
+            const infoDiv = document.getElementById('service-info');
+            
+            // Ocultar todos los formularios dinámicos
+            document.querySelectorAll('.dynamic-form').forEach(form => {
+                form.style.display = 'none';
+                // Remover el atributo required de todos los campos dentro
+                form.querySelectorAll('[required]').forEach(field => {
+                    field.removeAttribute('required');
+                });
+            });
+            
+            if (select.value) {
+                // Mostrar información del servicio
+                document.getElementById('info-descripcion').textContent = selectedOption.dataset.descripcion || 'N/A';
+                document.getElementById('info-costo').textContent = parseFloat(selectedOption.dataset.costo).toLocaleString('es-DO', {minimumFractionDigits: 2});
+                document.getElementById('info-tiempo').textContent = selectedOption.dataset.tiempo;
+                
+                // Mostrar alerta DNCD si aplica
+                const dncdAlert = document.getElementById('info-dncd');
+                if (selectedOption.dataset.dncd === 'True') {
+                    dncdAlert.style.display = 'block';
+                } else {
+                    dncdAlert.style.display = 'none';
+                }
+                
+                infoDiv.classList.add('active');
+                
+                // Mostrar formulario específico según el código del servicio
+                const codigo = selectedOption.textContent;
+                let formToShow = null;
+                
+                if (codigo.includes('Clase A')) {
+                    formToShow = document.getElementById('form-clase-a');
+                } else if (codigo.includes('Clase B') && codigo.includes('Privado')) {
+                    formToShow = document.getElementById('form-clase-b-privado');
+                } else if (codigo.includes('Clase B') && codigo.includes('Público')) {
+                    formToShow = document.getElementById('form-clase-b-publico');
+                } else if (codigo.includes('Materia Prima')) {
+                    formToShow = document.getElementById('form-importacion-materia-prima');
+                } else if (codigo.includes('Medicamentos')) {
+                    formToShow = document.getElementById('form-importacion-medicamentos');
+                }
+                
+                if (formToShow) {
+                    formToShow.style.display = 'block';
+                    // Hacer required los campos marcados con * del formulario visible
+                    formToShow.querySelectorAll('label').forEach(label => {
+                        if (label.innerHTML.includes('*')) {
+                            const input = label.parentElement.querySelector('input, select, textarea');
+                            if (input && input.id !== 'documentos') { // documentos ya es required globalmente
+                                input.setAttribute('required', 'required');
+                            }
+                        }
+                    });
+                }
+            } else {
+                infoDiv.classList.remove('active');
+            }
+        }
+
+        // Construir objeto de datos antes de enviar
+        document.querySelector('form').addEventListener('submit', function(e) {
+            // Recopilar todos los datos del formulario en un objeto
+            const formData = new FormData(this);
+            const datosFormulario = {};
+            
+            // Convertir FormData a objeto (excepto archivos)
+            for (let [key, value] of formData.entries()) {
+                if (key !== 'documentos' && key !== 'servicio_id' && key !== 'acepto_terminos') {
+                    datosFormulario[key] = value;
+                }
+            }
+            
+            // Crear campo oculto para datos_formulario
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'datos_formulario';
+            hiddenInput.value = JSON.stringify(datosFormulario);
+            this.appendChild(hiddenInput);
+        });
+    </script>
+</body>
+</html>

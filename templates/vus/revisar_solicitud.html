@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Revisar Solicitud {{ solicitud.numero_expediente }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 20px;
+        }
+        .back-link {
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            background-color: #34495e;
+            border-radius: 4px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h2 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+        }
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .info-item {
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .info-item label {
+            display: block;
+            font-size: 12px;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+        .info-item strong {
+            font-size: 14px;
+            color: #2c3e50;
+        }
+        .checklist {
+            margin: 20px 0;
+        }
+        .checklist-item {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            background-color: #f8f9fa;
+        }
+        .checklist-item label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+        .checklist-item input[type="checkbox"] {
+            margin-right: 10px;
+            width: 20px;
+            height: 20px;
+        }
+        .documentos-list {
+            list-style: none;
+        }
+        .documentos-list li {
+            padding: 10px;
+            border-bottom: 1px solid #ecf0f1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            min-height: 100px;
+        }
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .btn-success {
+            background-color: #27ae60;
+            color: white;
+        }
+        .btn-danger {
+            background-color: #e74c3c;
+            color: white;
+        }
+        .btn-secondary {
+            background-color: #95a5a6;
+            color: white;
+        }
+        .alert {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .alert-info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .alert-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+        }
+        .alert-success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .datos-formulario {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .datos-formulario h3 {
+            color: #2980b9;
+            margin: 15px 0 10px 0;
+            font-size: 16px;
+        }
+        .campo-dato {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-left: 3px solid #3498db;
+        }
+        .campo-dato.faltante {
+            border-left-color: #e74c3c;
+            background: #fee;
+        }
+        .campo-dato label {
+            font-weight: bold;
+            color: #555;
+            font-size: 13px;
+        }
+        .campo-dato .valor {
+            color: #2c3e50;
+            margin-top: 3px;
+        }
+        .campo-dato.faltante .valor {
+            color: #e74c3c;
+            font-style: italic;
+        }
+        .requisitos-header {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .requisitos-header p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Revisión de Solicitud {{ solicitud.numero_expediente }}</h1>
+        <a href="/vus/solicitudes" class="back-link">← Volver</a>
+    </div>
+
+    <div class="container">
+        <!-- Información del Solicitante -->
+        <div class="section">
+            <h2>Información del Solicitante</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Nombre</label>
+                    <strong>{{ solicitud.usuario.name }}</strong>
+                </div>
+                <div class="info-item">
+                    <label>Email</label>
+                    <strong>{{ solicitud.usuario.email }}</strong>
+                </div>
+                <div class="info-item">
+                    <label>Teléfono</label>
+                    <strong>{{ solicitud.usuario.telefono or 'No proporcionado' }}</strong>
+                </div>
+                <div class="info-item">
+                    <label>Tipo de Usuario</label>
+                    <strong>{{ solicitud.usuario.tipo_usuario }}</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información de la Solicitud -->
+        <div class="section">
+            <h2>Detalles del Servicio Solicitado</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Servicio</label>
+                    <strong>{{ solicitud.servicio.nombre }}</strong>
+                </div>
+                <div class="info-item">
+                    <label>Código</label>
+                    <strong>{{ solicitud.servicio.codigo }}</strong>
+                </div>
+                <div class="info-item">
+                    <label>Costo</label>
+                    <strong>RD$ {{ "{:,.2f}".format(solicitud.servicio.costo|float) }}</strong>
+                </div>
+                <div class="info-item">
+                    <label>Tiempo Estimado</label>
+                    <strong>{{ solicitud.servicio.tiempo_estimado_dias }} días</strong>
+                </div>
+                <div class="info-item">
+                    <label>Requiere DNCD</label>
+                    <strong>{{ 'Sí' if solicitud.servicio.requiere_dncd else 'No' }}</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Requisitos Específicos del Servicio -->
+        <div class="section">
+            <h2>📋 Requisitos Específicos: {{ requisitos.tipo }}</h2>
+            
+            <div class="requisitos-header">
+                <p><strong>Validez del certificado/permiso:</strong> {{ requisitos.validez }}</p>
+                <p><strong>Costo del servicio:</strong> {{ requisitos.costo }}</p>
+            </div>
+
+            <!-- Verificación de Campos del Formulario -->
+            <h3 style="color: #2980b9; margin: 20px 0 10px 0;">Campos del Formulario</h3>
+            
+            {% if campos_cumplidos %}
+            <div class="alert alert-success">
+                ✓ {{ campos_cumplidos|length }} de {{ requisitos.campos_requeridos|length }} campos completados correctamente
+            </div>
+            {% endif %}
+
+            {% if campos_faltantes %}
+            <div class="alert alert-warning">
+                ⚠️ Faltan {{ campos_faltantes|length }} campos requeridos
+            </div>
+            {% endif %}
+
+            <div class="datos-formulario">
+                {% for campo in requisitos.campos_requeridos %}
+                    {% set valor = datos_formulario.get(campo.campo) %}
+                    <div class="campo-dato {% if not valor or not valor.strip() %}faltante{% endif %}">
+                        <label>{{ campo.nombre }}:</label>
+                        <div class="valor">
+                            {% if valor and valor.strip() %}
+                                {{ valor }}
+                            {% else %}
+                                ❌ No proporcionado
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+
+            <!-- Documentos Requeridos -->
+            <h3 style="color: #2980b9; margin: 20px 0 10px 0;">Documentos Requeridos</h3>
+            <div class="checklist">
+                {% for doc_req in requisitos.documentos_requeridos %}
+                <div class="checklist-item">
+                    <label>
+                        <input type="checkbox" class="req-doc" data-documento="{{ doc_req }}">
+                        {{ doc_req }}
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Documentos Adjuntos -->
+        <div class="section">
+            <h2>📎 Documentos Adjuntos ({{ documentos|length }})</h2>
+            {% if documentos %}
+            <ul class="documentos-list">
+                {% for doc in documentos %}
+                <li>
+                    <span>📄 {{ doc.nombre_original }} <small style="color: #7f8c8d;">({{ doc.tipo }}, {{ doc.fecha_subida.strftime('%d/%m/%Y %H:%M') }})</small></span>
+                    <a href="/documentos/{{ doc.id }}/descargar" target="_blank" style="color: #3498db; font-weight: bold;">Ver documento</a>
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <div class="alert alert-warning">
+                ⚠️ No hay documentos adjuntos a esta solicitud.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Checklist General de Verificación -->
+        <div class="section">
+            <h2>✅ Verificación General</h2>
+            <div class="checklist">
+                <div class="checklist-item">
+                    <label>
+                        <input type="checkbox" id="check-identidad" class="req-general">
+                        Documento de identidad válido y legible
+                    </label>
+                </div>
+                <div class="checklist-item">
+                    <label>
+                        <input type="checkbox" id="check-formulario" class="req-general">
+                        Formulario de solicitud completo (todos los campos requeridos)
+                    </label>
+                </div>
+                <div class="checklist-item">
+                    <label>
+                        <input type="checkbox" id="check-documentos" class="req-general">
+                        Todos los documentos técnicos adjuntos y legibles
+                    </label>
+                </div>
+                {% if solicitud.servicio.costo > 0 %}
+                <div class="checklist-item">
+                    <label>
+                        <input type="checkbox" id="check-pago" class="req-general">
+                        Comprobante de pago del servicio (RD$ {{ "{:,.2f}".format(solicitud.servicio.costo|float) }})
+                    </label>
+                </div>
+                {% endif %}
+                <div class="checklist-item">
+                    <label>
+                        <input type="checkbox" id="check-calidad" class="req-general">
+                        Calidad y autenticidad de los documentos verificada
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resumen de Verificación -->
+        <div class="section">
+            <h2>📊 Resumen de Verificación</h2>
+            <div id="resumen-verificacion" style="padding: 15px; background: #ecf0f1; border-radius: 4px;">
+                <p><strong>Campos completados:</strong> <span id="resumen-campos">{{ campos_cumplidos|length }}/{{ requisitos.campos_requeridos|length }}</span></p>
+                <p><strong>Documentos específicos verificados:</strong> <span id="resumen-docs">0/{{ requisitos.documentos_requeridos|length }}</span></p>
+                <p><strong>Verificación general:</strong> <span id="resumen-general">0/{% if solicitud.servicio.costo > 0 %}5{% else %}4{% endif %}</span></p>
+                <p id="estado-verificacion" style="margin-top: 10px; padding: 10px; border-radius: 4px; font-weight: bold;">
+                    Estado: Pendiente de verificación
+                </p>
+            </div>
+        </div>
+
+        <!-- Observaciones -->
+        <div class="section">
+            <h2>Observaciones</h2>
+            <div class="form-group">
+                <label>Notas sobre la documentación (opcional si aprueba, requerido si devuelve)</label>
+                <textarea id="observaciones" placeholder="Indique aquí cualquier observación sobre los documentos o requisitos faltantes..."></textarea>
+            </div>
+        </div>
+
+        <!-- Acciones -->
+        <div class="section">
+            <h2>Decisión</h2>
+            <div class="actions">
+                <button class="btn btn-success" onclick="aprobar()">✓ Aprobar y Enviar a UPC</button>
+                <button class="btn btn-danger" onclick="devolver()">✗ Devolver al Usuario</button>
+                <button class="btn btn-secondary" onclick="window.location.href='/vus/solicitudes'">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Actualizar resumen al cambiar checkboxes
+        function actualizarResumen() {
+            const docsChecked = document.querySelectorAll('.req-doc:checked').length;
+            const docsTotal = document.querySelectorAll('.req-doc').length;
+            const generalChecked = document.querySelectorAll('.req-general:checked').length;
+            const generalTotal = document.querySelectorAll('.req-general').length;
+            
+            document.getElementById('resumen-docs').textContent = `${docsChecked}/${docsTotal}`;
+            document.getElementById('resumen-general').textContent = `${generalChecked}/${generalTotal}`;
+            
+            const camposCompletos = {{ campos_cumplidos|length }};
+            const camposTotal = {{ requisitos.campos_requeridos|length }};
+            const camposFaltantes = {{ campos_faltantes|length }};
+            
+            // Calcular estado general
+            const estadoDiv = document.getElementById('estado-verificacion');
+            
+            if (camposFaltantes > 0) {
+                estadoDiv.style.background = '#fee';
+                estadoDiv.style.color = '#c0392b';
+                estadoDiv.textContent = `❌ INCOMPLETO: Faltan ${camposFaltantes} campos del formulario`;
+            } else if (docsChecked < docsTotal || generalChecked < generalTotal) {
+                estadoDiv.style.background = '#fff3cd';
+                estadoDiv.style.color = '#856404';
+                estadoDiv.textContent = '⚠️ PENDIENTE: Complete la verificación de documentos';
+            } else {
+                estadoDiv.style.background = '#d4edda';
+                estadoDiv.style.color = '#155724';
+                estadoDiv.textContent = '✅ COMPLETO: Todos los requisitos verificados';
+            }
+        }
+        
+        // Escuchar cambios en checkboxes
+        document.querySelectorAll('.req-doc, .req-general').forEach(checkbox => {
+            checkbox.addEventListener('change', actualizarResumen);
+        });
+        
+        // Inicializar resumen
+        actualizarResumen();
+
+        function aprobar() {
+            const camposFaltantes = {{ campos_faltantes|length }};
+            
+            if (camposFaltantes > 0) {
+                if (!confirm(`⚠️ ADVERTENCIA: Hay ${camposFaltantes} campos del formulario sin completar.\n\n¿Está seguro de aprobar esta solicitud de todas formas?`)) {
+                    return;
+                }
+            }
+            
+            if (confirm('¿Está seguro de aprobar esta solicitud y enviarla a UPC para evaluación técnica?')) {
+                const observaciones = document.getElementById('observaciones').value;
+                
+                // Recopilar checklist de documentos verificados
+                const docsVerificados = [];
+                document.querySelectorAll('.req-doc:checked').forEach(checkbox => {
+                    docsVerificados.push(checkbox.getAttribute('data-documento'));
+                });
+                
+                const generalVerificado = [];
+                document.querySelectorAll('.req-general:checked').forEach(checkbox => {
+                    generalVerificado.push(checkbox.parentElement.textContent.trim());
+                });
+                
+                fetch('/solicitudes/{{ solicitud.id }}/evaluar-vus', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        cumple: true,
+                        observaciones: observaciones,
+                        checklist: {
+                            documentos_especificos: docsVerificados,
+                            verificacion_general: generalVerificado,
+                            campos_completos: {{ campos_cumplidos|length }},
+                            campos_totales: {{ requisitos.campos_requeridos|length }}
+                        }
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('✅ Solicitud aprobada y enviada a UPC para evaluación técnica');
+                        window.location.href = '/vus/solicitudes';
+                    } else {
+                        alert('❌ Error al aprobar solicitud');
+                    }
+                })
+                .catch(error => {
+                    alert('❌ Error de conexión: ' + error);
+                });
+            }
+        }
+
+        function devolver() {
+            const observaciones = document.getElementById('observaciones').value;
+            
+            if (!observaciones.trim()) {
+                alert('⚠️ Debe indicar las observaciones específicas para devolver la solicitud.\n\nIndique claramente qué documentos faltan o qué campos del formulario deben corregirse.');
+                document.getElementById('observaciones').focus();
+                return;
+            }
+
+            if (confirm('¿Está seguro de devolver esta solicitud al usuario?\n\nSe le notificará para que corrija la documentación según sus observaciones.')) {
+                fetch('/solicitudes/{{ solicitud.id }}/evaluar-vus', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        cumple: false,
+                        observaciones: observaciones
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert('✅ Solicitud devuelta al usuario con observaciones');
+                        window.location.href = '/vus/solicitudes';
+                    } else {
+                        alert('❌ Error al devolver solicitud');
+                    }
+                })
+                .catch(error => {
+                    alert('❌ Error de conexión: ' + error);
+                });
+            }
+        }
+    </script>
+</body>
+</html>

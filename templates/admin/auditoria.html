@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auditoría del Sistema - Admin</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            font-size: 20px;
+        }
+        .back-link {
+            color: white;
+            text-decoration: none;
+            padding: 8px 15px;
+            background-color: #34495e;
+            border-radius: 4px;
+        }
+        .back-link:hover {
+            background-color: #4a5f7f;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #9b59b6;
+            padding-bottom: 10px;
+        }
+        .auditoria-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .auditoria-table th {
+            background-color: #ecf0f1;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            color: #2c3e50;
+            border-bottom: 2px solid #bdc3c7;
+        }
+        .auditoria-table td {
+            padding: 12px;
+            border-bottom: 1px solid #ecf0f1;
+            font-size: 13px;
+        }
+        .auditoria-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .accion-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            background-color: #9b59b6;
+            color: white;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .pagination a {
+            padding: 8px 12px;
+            background-color: #3498db;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+        .pagination a:hover {
+            background-color: #2980b9;
+        }
+        .pagination .current {
+            background-color: #2c3e50;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Auditoría del Sistema</h1>
+        <a href="/dashboard" class="back-link">← Volver al Dashboard</a>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h2>Registro de Auditoría</h2>
+            
+            {% if pagination.items %}
+            <table class="auditoria-table">
+                <thead>
+                    <tr>
+                        <th>Fecha/Hora</th>
+                        <th>Usuario</th>
+                        <th>Acción</th>
+                        <th>Solicitud</th>
+                        <th>Detalles</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for registro in pagination.items %}
+                    <tr>
+                        <td>{{ registro.timestamp.strftime('%d/%m/%Y %H:%M:%S') }}</td>
+                        <td>{{ registro.usuario_id or 'Sistema' }}</td>
+                        <td><span class="accion-badge">{{ registro.accion }}</span></td>
+                        <td>{{ registro.solicitud_id or '-' }}</td>
+                        <td>{{ registro.detalles or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <div class="pagination">
+                {% if pagination.has_prev %}
+                <a href="?page={{ pagination.prev_num }}">← Anterior</a>
+                {% endif %}
+                
+                <a href="#" class="current">Página {{ pagination.page }} de {{ pagination.pages }}</a>
+                
+                {% if pagination.has_next %}
+                <a href="?page={{ pagination.next_num }}">Siguiente →</a>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No hay registros de auditoría disponibles.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
