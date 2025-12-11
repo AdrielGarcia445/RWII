@@ -525,7 +525,7 @@ def crear_workflow_firma_certificado(solicitud_id, certificado_id, requiere_dncd
             db.session.add(action_dncd)
     
     db.session.commit()
-    
+
     # Registrar en auditoría de firmas
     audit_log = SignatureAuditLog(
         workflow_id=str(workflow.id),
