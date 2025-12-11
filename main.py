@@ -528,12 +528,12 @@ def crear_workflow_firma_certificado(solicitud_id, certificado_id, requiere_dncd
     
     # Registrar en auditoría de firmas
     audit_log = SignatureAuditLog(
-        workflow_id=workflow.id,
-        user_id=session.get('user_id'),
+        workflow_id=str(workflow.id),
+        user_id=str(session.get('user_id')),
         event_type='WORKFLOW_CREATED',
         event_data={
-            'solicitud_id': solicitud_id,
-            'certificado_id': certificado_id,
+            'solicitud_id': str(solicitud_id),
+            'certificado_id': str(certificado_id),
             'requiere_dncd': requiere_dncd,
             'lineas_creadas': 2 if requiere_dncd else 1
         },
@@ -558,49 +558,94 @@ def firmar_documento_workflow(workflow_id, user_id, signature_type='ELECTRONIC')
     6. Si es última línea, marca workflow como COMPLETED y certificado como ACTIVO
     7. Si hay siguiente línea, la activa y notifica a firmantes
     """
-    workflow = SignatureWorkflow.query.get(workflow_id)
-    if not workflow:
-        raise ValueError("Workflow no encontrado")
+    print("\n   [firmar_documento_workflow] Iniciando...")
+    print(f"      Workflow ID: {workflow_id}")
+    print(f"      User ID: {user_id}")
+    print(f"      Signature Type: {signature_type}")
     
-    # Buscar acción pendiente del usuario en la línea actual
-    action = None
-    for line in workflow.addressee_lines:
-        if line.status in ['NEW', 'IN_PROGRESS']:
-            for group in line.groups:
-                for act in group.actions:
-                    if act.user_id == user_id and act.status == 'NEW':
-                        action = act
+    try:
+        print("\n   [3.1] Consultando workflow...")
+        workflow = SignatureWorkflow.query.get(workflow_id)
+        if not workflow:
+            print(f"      ✗ ERROR: Workflow {workflow_id} no encontrado en base de datos")
+            raise ValueError("Workflow no encontrado")
+        print(f"      ✓ Workflow encontrado")
+        print(f"      ✓ Total líneas: {len(workflow.addressee_lines)}")
+        
+        # Buscar acción pendiente del usuario en la línea actual
+        print("\n   [3.2] Buscando acción pendiente del usuario...")
+        action = None
+        line_info = []
+        for line in workflow.addressee_lines:
+            line_info.append(f"Línea {line.line_number}: status={line.status}, grupos={len(line.groups)}")
+            if line.status in ['NEW', 'IN_PROGRESS']:
+                print(f"      Revisando línea {line.line_number} (status: {line.status})...")
+                for group in line.groups:
+                    print(f"         Grupo {group.group_number}: status={group.status}, acciones={len(group.actions)}")
+                    for act in group.actions:
+                        print(f"            Acción: user_id={act.user_id}, status={act.status}, type={act.action_type}")
+                        if act.user_id == user_id and act.status == 'NEW':
+                            action = act
+                            print(f"            ✓ Acción pendiente encontrada!")
+                            break
+                    if action:
                         break
-                if action:
-                    break
-        if action:
-            break
-    
-    if not action:
-        raise ValueError("No hay acción de firma pendiente para este usuario en el workflow")
+            if action:
+                break
+        
+        if not action:
+            print("\n      ✗ ERROR: No se encontró acción pendiente")
+            print("      Estructura del workflow:")
+            for info in line_info:
+                print(f"         {info}")
+            raise ValueError("No hay acción de firma pendiente para este usuario en el workflow")
+        
+        print(f"      ✓ Acción encontrada: ID={action.id}")
+    except Exception as e:
+        print(f"\n   ❌ ERROR en firmar_documento_workflow: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
     
     # Generar datos de la firma
-    usuario = Usuario.query.get(user_id)
-    certificado = Certificado.query.get(workflow.certificado_id)
-    
-    signature_data = {
-        'timestamp': datetime.utcnow().isoformat(),
-        'user_id': user_id,
-        'user_name': usuario.name,
-        'user_email': usuario.email,
-        'user_rol': usuario.rol_codigo,
-        'signature_type': signature_type,
-        'certificate_hash': generar_hash_certificado(f'{certificado.numero_certificado}{datetime.utcnow().isoformat()}'),
-        'document_hash': certificado.ruta,  # En producción, calcular hash del archivo real
-        'ip_address': request.remote_addr if request else None,
-        'user_agent': request.user_agent.string if request else None,
-        'workflow_public_id': workflow.public_access_id
-    }
-    
-    # Actualizar acción
-    action.status = 'SIGNED'
-    action.action_date = datetime.utcnow()
-    action.signature_data = signature_data
+    try:
+        print("\n   [3.3] Generando datos de la firma...")
+        usuario = Usuario.query.get(user_id)
+        if not usuario:
+            print(f"      ✗ ERROR: Usuario {user_id} no encontrado")
+            raise ValueError(f"Usuario {user_id} no encontrado")
+        print(f"      ✓ Usuario: {usuario.name} ({usuario.rol_codigo})")
+        
+        certificado = Certificado.query.get(workflow.certificado_id)
+        if not certificado:
+            print(f"      ✗ ERROR: Certificado {workflow.certificado_id} no encontrado")
+            raise ValueError(f"Certificado {workflow.certificado_id} no encontrado")
+        print(f"      ✓ Certificado: {certificado.numero_certificado}")
+        
+        signature_data = {
+            'timestamp': datetime.utcnow().isoformat(),
+            'user_id': str(user_id),
+            'user_name': usuario.name,
+            'user_email': usuario.email,
+            'user_rol': usuario.rol_codigo,
+            'signature_type': signature_type,
+            'certificate_hash': generar_hash_certificado(f'{certificado.numero_certificado}{datetime.utcnow().isoformat()}'),
+            'document_hash': certificado.ruta,
+            'ip_address': request.remote_addr if request else None,
+            'user_agent': request.user_agent.string if request else None,
+            'workflow_public_id': workflow.public_access_id
+        }
+        print(f"      ✓ Signature data generado")
+        
+        # Actualizar acción
+        print("\n   [3.4] Actualizando acción...")
+        action.status = 'SIGNED'
+        action.action_date = datetime.utcnow()
+        action.signature_data = signature_data
+        print(f"      ✓ Acción marcada como SIGNED")
+    except Exception as e:
+        print(f"\n   ❌ ERROR generando datos de firma: {str(e)}")
+        raise
     
     # Actualizar grupo
     group = action.addressee_group
@@ -643,8 +688,8 @@ def firmar_documento_workflow(workflow_id, user_id, signature_type='ELECTRONIC')
             
             # Auditoría: siguiente línea activada
             audit_log = SignatureAuditLog(
-                workflow_id=workflow_id,
-                user_id=user_id,
+                workflow_id=str(workflow_id),
+                user_id=str(user_id),
                 event_type='LINE_COMPLETED_NEXT_ACTIVATED',
                 event_data={
                     'completed_line': line.line_number,
@@ -663,14 +708,48 @@ def firmar_documento_workflow(workflow_id, user_id, signature_type='ELECTRONIC')
             if certificado:
                 certificado.estado = 'ACTIVO'
             
+            # Cambiar estado de solicitud a APROBADO_FINAL para que VUS pueda entregar
+            solicitud = Solicitud.query.get(workflow.solicitud_id)
+            if solicitud:
+                print(f"\n   [3.5] Actualizando estado de solicitud...")
+                print(f"      Estado anterior: {solicitud.estado_codigo}")
+                cambiar_estado_solicitud(
+                    workflow.solicitud_id,
+                    'APROBADO_FINAL',
+                    f'Workflow de firma completado - Certificado listo para entrega'
+                )
+                print(f"      ✓ Estado actualizado a APROBADO_FINAL")
+                
+                # Notificar a VUS para entrega del certificado
+                print(f"\n   [3.6] Notificando a VUS para entrega...")
+                usuarios_vus = Usuario.query.filter_by(rol_codigo='VUS', activo=True).all()
+                for vus in usuarios_vus:
+                    crear_notificacion(
+                        vus.id,
+                        'CERTIFICADO_PARA_ENTREGA',
+                        f'Certificado {certificado.numero_certificado} ({solicitud.numero_expediente}) listo para entrega',
+                        workflow.solicitud_id
+                    )
+                print(f"      ✓ {len(usuarios_vus)} notificaciones enviadas a VUS")
+                
+                # Notificar al usuario que su certificado está listo
+                crear_notificacion(
+                    solicitud.usuario_id,
+                    'CERTIFICADO_LISTO',
+                    f'Su certificado {certificado.numero_certificado} está listo para retiro en Ventanilla Única',
+                    workflow.solicitud_id
+                )
+                print(f"      ✓ Notificación enviada al usuario {solicitud.usuario_id}")
+            
             # Auditoría: workflow completado
             audit_log = SignatureAuditLog(
-                workflow_id=workflow_id,
-                user_id=user_id,
+                workflow_id=str(workflow_id),
+                user_id=str(user_id),
                 event_type='WORKFLOW_COMPLETED',
                 event_data={
-                    'certificado_id': certificado.id if certificado else None,
-                    'total_firmas': sum(len(g.actions) for l in workflow.addressee_lines for g in l.groups)
+                    'certificado_id': str(certificado.id) if certificado else None,
+                    'total_firmas': sum(len(g.actions) for l in workflow.addressee_lines for g in l.groups),
+                    'estado_solicitud': 'APROBADO_FINAL'
                 },
                 ip_address=request.remote_addr if request else None,
                 user_agent=request.user_agent.string if request else None
@@ -679,9 +758,9 @@ def firmar_documento_workflow(workflow_id, user_id, signature_type='ELECTRONIC')
     
     # Auditoría: firma ejecutada
     audit_log = SignatureAuditLog(
-        workflow_id=workflow_id,
-        action_id=action.id,
-        user_id=user_id,
+        workflow_id=str(workflow_id),
+        action_id=str(action.id),
+        user_id=str(user_id),
         event_type='DOCUMENT_SIGNED',
         event_data=signature_data,
         ip_address=request.remote_addr if request else None,
@@ -949,9 +1028,9 @@ def vus_dashboard():
     """Dashboard especializado para Ventanilla Única"""
     estado_filtro = request.args.get('estado')
     
-    # Solicitudes que VUS debe revisar
+    # Solicitudes que VUS debe revisar (incluye certificados listos para entrega)
     query = Solicitud.query.filter(
-        Solicitud.estado_codigo.in_(['RECIBIDO', 'DEVUELTO_VUS'])
+        Solicitud.estado_codigo.in_(['RECIBIDO', 'DEVUELTO_VUS', 'APROBADO_FINAL'])
     )
     
     if estado_filtro:
@@ -970,7 +1049,7 @@ def vus_dashboard():
         db.func.date(HistorialEstadoSolicitud.fecha) == date.today()
     ).count()
     
-    # Certificados listos para entrega
+    # Certificados listos para entrega (después de firma DNCD)
     para_entrega = Solicitud.query.filter_by(estado_codigo='APROBADO_FINAL').count()
     
     return render_template('vus/dashboard.html', 
@@ -1296,66 +1375,101 @@ def evaluar_upc(solicitud_id):
 @role_required('DNCD')
 def firmar_dncd(solicitud_id):
     """Firma de DNCD usando workflow de firma digital tipo Adobe Sign"""
+    print("\n" + "="*70)
+    print("🔐 DEBUG FIRMAR_DNCD - INICIO")
+    print(f"   Solicitud ID: {solicitud_id}")
+    print(f"   User ID en sesión: {session.get('user_id')}")
+    print("="*70)
+    
     data = request.get_json() if request.is_json else request.form
     
-    solicitud = Solicitud.query.get_or_404(solicitud_id)
-    
-    # Verificar que esté en estado correcto
-    if solicitud.estado_codigo not in ['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD']:
-        if request.is_json:
-            return jsonify({'success': False, 'error': 'Estado de solicitud no válido'}), 400
-        return redirect(url_for('dashboard'))
-    
     try:
+        print("\n[1] Consultando solicitud...")
+        solicitud = Solicitud.query.get_or_404(solicitud_id)
+        print(f"    ✓ Solicitud encontrada: {solicitud.numero_expediente}")
+        print(f"    ✓ Estado actual: {solicitud.estado_codigo}")
+        print(f"    ✓ Certificado ID: {solicitud.certificado_id}")
+        
+        # Verificar que esté en estado correcto
+        if solicitud.estado_codigo not in ['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD']:
+            print(f"    ✗ ERROR: Estado '{solicitud.estado_codigo}' no válido para firma DNCD")
+            if request.is_json:
+                return jsonify({'success': False, 'error': 'Estado de solicitud no válido'}), 400
+            return redirect(url_for('dashboard'))
+        
         # 1. Buscar workflow activo para esta solicitud
+        print("\n[2] Buscando workflow activo...")
         workflow = SignatureWorkflow.query.filter_by(
             solicitud_id=solicitud_id,
             status='IN_PROGRESS'
         ).first()
         
         if not workflow:
+            print("    ✗ ERROR: No se encontró workflow activo")
+            print("    Buscando cualquier workflow para esta solicitud...")
+            all_workflows = SignatureWorkflow.query.filter_by(solicitud_id=solicitud_id).all()
+            print(f"    Total workflows encontrados: {len(all_workflows)}")
+            for wf in all_workflows:
+                print(f"      - ID: {wf.id}, Status: {wf.status}, Public ID: {wf.public_access_id}")
             raise ValueError('No hay workflow de firma activo para esta solicitud')
         
+        print(f"    ✓ Workflow encontrado: {workflow.id}")
+        print(f"    ✓ Public ID: {workflow.public_access_id}")
+        print(f"    ✓ Status: {workflow.status}")
+        print(f"    ✓ Certificado ID: {workflow.certificado_id}")
+        
         # 2. Ejecutar firma DNCD en el workflow
+        print("\n[3] Ejecutando firma DNCD en workflow...")
         resultado_firma = firmar_documento_workflow(
             workflow_id=workflow.id,
             user_id=session['user_id'],
             signature_type='ELECTRONIC'
         )
+        print(f"    ✓ Firma ejecutada exitosamente")
+        print(f"    ✓ Workflow status: {resultado_firma['workflow_status']}")
+        print(f"    ✓ Certificado estado: {resultado_firma['certificado_estado']}")
         
         # 3. Actualizar certificado con datos de firma DNCD
+        print("\n[4] Actualizando certificado...")
+        certificado = None
         if solicitud.certificado_id:
             certificado = Certificado.query.get(solicitud.certificado_id)
             if certificado:
+                print(f"    ✓ Certificado encontrado: {certificado.numero_certificado}")
                 certificado.firmante_dncd_id = session['user_id']
                 certificado.firma_digital_dncd = str(resultado_firma['signature_data'])
                 certificado.fecha_firma_dncd = datetime.utcnow()
-                # El estado del certificado ya fue actualizado a ACTIVO por firmar_documento_workflow()
+                print(f"    ✓ Certificado actualizado con firma DNCD")
+            else:
+                print(f"    ✗ WARNING: Certificado ID {solicitud.certificado_id} no encontrado")
+        else:
+            print(f"    ✗ WARNING: Solicitud no tiene certificado_id asociado")
         
-        # 4. Cambiar estado de solicitud
-        cambiar_estado_solicitud(solicitud_id, 'APROBADO_FINAL', 'Aprobado y firmado por DNCD')
+        # 4. Actualizar fecha de firma DNCD
+        print("\n[5] Actualizando fecha de firma DNCD...")
         solicitud.fecha_aprobacion_dncd = datetime.utcnow()
+        print(f"    ✓ Fecha de firma DNCD registrada")
         
-        # 5. Notificar al usuario
-        crear_notificacion(
-            solicitud.usuario_id,
-            'CERTIFICADO_LISTO',
-            f'Su certificado está listo para retiro en Ventanilla Única',
-            solicitud_id
-        )
+        # NOTA: El cambio de estado a APROBADO_FINAL y las notificaciones 
+        # a VUS y usuario se realizan automáticamente en firmar_documento_workflow()
+        # cuando se completa la última línea del workflow
+        print("\n[6] Estado y notificaciones...")
+        if resultado_firma['workflow_status'] == 'COMPLETED':
+            print(f"    ✓ Workflow COMPLETED - Estado actualizado a APROBADO_FINAL automáticamente")
+            print(f"    ✓ Notificaciones enviadas a VUS y usuario automáticamente")
+        else:
+            print(f"    ⚠ WARNING: Workflow status = {resultado_firma['workflow_status']} (esperado: COMPLETED)")
         
-        # 6. Notificar a VUS para entrega
-        usuarios_vus = Usuario.query.filter_by(rol_codigo='VUS', activo=True).all()
-        for vus in usuarios_vus:
-            crear_notificacion(
-                vus.id,
-                'CERTIFICADO_PARA_ENTREGA',
-                f'Certificado {solicitud.numero_expediente} listo para entrega',
-                solicitud_id
-            )
-        
+        print("\n[7] Guardando cambios en base de datos...")
         db.session.commit()
+        print("    ✓ Commit exitoso")
+        
         registrar_auditoria('FIRMAR_DNCD', solicitud_id, f'Solicitud firmada por DNCD - Workflow {workflow.public_access_id}')
+        print("    ✓ Auditoría registrada")
+        
+        print("\n" + "="*70)
+        print("✅ FIRMA DNCD COMPLETADA EXITOSAMENTE")
+        print("="*70 + "\n")
         
         if request.is_json:
             return jsonify({
@@ -1369,6 +1483,15 @@ def firmar_dncd(solicitud_id):
         return redirect(url_for('dashboard'))
     
     except Exception as e:
+        print("\n" + "="*70)
+        print("❌ ERROR EN FIRMAR_DNCD")
+        print(f"   Tipo: {type(e).__name__}")
+        print(f"   Mensaje: {str(e)}")
+        import traceback
+        print(f"   Traceback:")
+        traceback.print_exc()
+        print("="*70 + "\n")
+        
         db.session.rollback()
         if request.is_json:
             return jsonify({'success': False, 'error': str(e)}), 500
@@ -1858,15 +1981,35 @@ def inicializar_datos_base():
 @role_required('DIRECCION')
 def firmar_direccion(solicitud_id):
     """Firma de Dirección usando workflow de firma digital tipo Adobe Sign"""
+    print("\n" + "="*70)
+    print("🔐 DEBUG FIRMAR_DIRECCION - INICIO")
+    print(f"   Solicitud ID: {solicitud_id}")
+    print(f"   User ID en sesión: {session.get('user_id')}")
+    print(f"   Rol: {session.get('rol_codigo')}")
+    print("="*70)
+    
     data = request.get_json() if request.is_json else request.form
     
-    solicitud = Solicitud.query.get_or_404(solicitud_id)
-    servicio = solicitud.servicio
-    
     try:
+        print("\n[1] Consultando solicitud...")
+        solicitud = Solicitud.query.get_or_404(solicitud_id)
+        print(f"    ✓ Solicitud encontrada: {solicitud.numero_expediente}")
+        print(f"    ✓ Estado actual: {solicitud.estado_codigo}")
+        print(f"    ✓ Servicio ID: {solicitud.servicio_id}")
+        
+        print("\n[2] Consultando servicio...")
+        servicio = solicitud.servicio
+        print(f"    ✓ Servicio: {servicio.nombre}")
+        print(f"    ✓ Código: {servicio.codigo}")
+        print(f"    ✓ Requiere DNCD: {servicio.requiere_dncd}")
+        
         # 1. Crear certificado (siempre se crea primero)
+        print("\n[3] Verificando certificado...")
         if not solicitud.certificado_id:
+            print("    → Certificado NO existe, creando nuevo...")
             numero_certificado = f"CERT-{datetime.now().year}-{str(uuid.uuid4())[:8].upper()}"
+            print(f"    ✓ Número de certificado generado: {numero_certificado}")
+            
             certificado = Certificado(
                 solicitud_id=solicitud_id,
                 numero_certificado=numero_certificado,
@@ -1875,51 +2018,92 @@ def firmar_direccion(solicitud_id):
                 ruta=f"/certificados/{numero_certificado}.pdf",
                 fecha_vencimiento=datetime.utcnow() + timedelta(days=365),
                 firmante_direccion_id=session['user_id'],
-                firma_digital_direccion='PENDING_WORKFLOW',  # Se actualizará con el workflow
-                estado='EN_PROCESO'  # Siempre empieza en EN_PROCESO
+                firma_digital_direccion='PENDING_WORKFLOW',
+                estado='EN_PROCESO'
             )
+            print(f"    ✓ Objeto Certificado creado")
+            
             db.session.add(certificado)
+            print(f"    ✓ Certificado agregado a sesión")
+            
             db.session.flush()
+            print(f"    ✓ Flush ejecutado - Certificado ID: {certificado.id}")
+            
             solicitud.certificado_id = certificado.id
+            print(f"    ✓ Certificado vinculado a solicitud")
+            
             db.session.commit()
+            print(f"    ✓ Commit exitoso - Certificado creado")
         else:
+            print(f"    → Certificado YA existe: {solicitud.certificado_id}")
             certificado = Certificado.query.get(solicitud.certificado_id)
+            print(f"    ✓ Certificado recuperado: {certificado.numero_certificado}")
         
         # 2. Crear workflow de firma digital
+        print("\n[4] Creando workflow de firma digital...")
+        print(f"    - Solicitud ID: {solicitud_id}")
+        print(f"    - Certificado ID: {certificado.id}")
+        print(f"    - Requiere DNCD: {servicio.requiere_dncd}")
+        
         workflow = crear_workflow_firma_certificado(
             solicitud_id=solicitud_id,
             certificado_id=certificado.id,
             requiere_dncd=servicio.requiere_dncd
         )
+        print(f"    ✓ Workflow creado: {workflow.id}")
+        print(f"    ✓ Public ID: {workflow.public_access_id}")
+        print(f"    ✓ Status: {workflow.status}")
         
         # 3. Ejecutar firma de Dirección inmediatamente
+        print("\n[5] Ejecutando firma de Dirección...")
         resultado_firma = firmar_documento_workflow(
             workflow_id=workflow.id,
             user_id=session['user_id'],
             signature_type='ELECTRONIC'
         )
+        print(f"    ✓ Firma ejecutada")
+        print(f"    ✓ Workflow status: {resultado_firma['workflow_status']}")
+        print(f"    ✓ Certificado estado: {resultado_firma['certificado_estado']}")
         
         # 4. Actualizar firma en certificado con datos del workflow
+        print("\n[6] Actualizando certificado con datos de firma...")
         certificado.firma_digital_direccion = str(resultado_firma['signature_data'])
+        print(f"    ✓ Firma digital guardada en certificado")
         
         # 5. Cambiar estado según resultado del workflow
+        print("\n[7] Cambiando estado de solicitud...")
         if servicio.requiere_dncd:
+            print("    → Requiere DNCD: Cambiando estado a ENVIADO_DNCD")
             cambiar_estado_solicitud(solicitud_id, 'ENVIADO_DNCD', 'Firmado por Dirección - Enviado a DNCD')
             solicitud.fecha_recepcion_dncd = datetime.utcnow()
-            # Las notificaciones a DNCD ya se enviaron en firmar_documento_workflow()
+            print(f"    ✓ Estado cambiado a ENVIADO_DNCD")
+            print(f"    ✓ Fecha recepción DNCD registrada")
+            print(f"    ℹ  Notificaciones a DNCD ya enviadas en workflow")
         else:
-            # Si no requiere DNCD, el workflow ya marcó el certificado como ACTIVO
+            print("    → NO requiere DNCD: Cambiando estado a APROBADO_FINAL")
             cambiar_estado_solicitud(solicitud_id, 'APROBADO_FINAL', 'Certificado aprobado y firmado')
             solicitud.fecha_aprobacion = datetime.utcnow()
+            print(f"    ✓ Estado cambiado a APROBADO_FINAL")
+            
             crear_notificacion(
                 solicitud.usuario_id,
                 'CERTIFICADO_LISTO',
                 f'Su certificado está listo para retiro',
                 solicitud_id
             )
+            print(f"    ✓ Notificación enviada al usuario")
         
+        print("\n[8] Guardando cambios...")
         db.session.commit()
+        print(f"    ✓ Commit exitoso")
+        
+        print("\n[9] Registrando auditoría...")
         registrar_auditoria('FIRMAR_DIRECCION', solicitud_id, f'Solicitud firmada por Dirección - Workflow {workflow.public_access_id}')
+        print(f"    ✓ Auditoría registrada")
+        
+        print("\n" + "="*70)
+        print("✅ FIRMA DIRECCIÓN COMPLETADA EXITOSAMENTE")
+        print("="*70 + "\n")
         
         if request.is_json:
             return jsonify({
@@ -1933,7 +2117,18 @@ def firmar_direccion(solicitud_id):
         return redirect(url_for('dashboard'))
     
     except Exception as e:
+        print("\n" + "="*70)
+        print("❌ ERROR EN FIRMAR_DIRECCION")
+        print(f"   Tipo: {type(e).__name__}")
+        print(f"   Mensaje: {str(e)}")
+        print("   Traceback:")
+        import traceback
+        traceback.print_exc()
+        print("="*70 + "\n")
+        
         db.session.rollback()
+        print("   ℹ  Rollback ejecutado")
+        
         if request.is_json:
             return jsonify({'success': False, 'error': str(e)}), 500
         return redirect(url_for('dashboard'))
