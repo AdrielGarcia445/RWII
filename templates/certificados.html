@@ -1,202 +1,327 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Certificados - Sistema de Gestión de Sustancias Controladas</title>
+{% extends "base_app.html" %}
+
+{% block title %}Mis certificados | Sistema de Gestión de Sustancias Controladas{% endblock %}
+
+{% block breadcrumb %}
+    <span class="breadcrumb-main">Certificados</span>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-sub">Mis certificados</span>
+{% endblock %}
+
+{% block content %}
+
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        /* Estilos específicos de la pantalla de certificados */
+        .cert-page {
+            margin-top: .5rem;
         }
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-        }
-        .header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 15px 30px;
+
+        .cert-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
         }
-        .header h1 {
-            font-size: 20px;
+
+        .cert-title {
+            font-size: 1.7rem;
+            font-weight: 700;
+            margin: 0 0 .3rem;
+            color: #0f172a;
         }
-        .header-actions {
+
+        .cert-subtitle {
+            margin: 0;
+            font-size: .95rem;
+            color: #64748b;
+        }
+
+        .cert-summary {
             display: flex;
-            gap: 10px;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
         }
-        .back-link {
-            color: white;
-            text-decoration: none;
-            padding: 8px 15px;
-            background-color: #34495e;
-            border-radius: 4px;
+
+        .cert-summary-card {
+            padding: .8rem 1rem;
+            border-radius: .9rem;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            min-width: 180px;
         }
-        .back-link:hover {
-            background-color: #4a5f7f;
+
+        .cert-summary-label {
+            font-size: .8rem;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: #94a3b8;
+            margin-bottom: .15rem;
         }
-        .container {
-            max-width: 1200px;
-            margin: 30px auto;
-            padding: 0 20px;
+
+        .cert-summary-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #0f172a;
         }
-        .section {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+
+        /* Tabla de certificados */
+        .cert-card {
+            border-radius: 1.1rem;
         }
-        h2 {
-            color: #2c3e50;
-            margin-bottom: 20px;
-            font-size: 18px;
-            border-bottom: 2px solid #27ae60;
-            padding-bottom: 10px;
+
+        .cert-table-wrapper {
+            overflow-x: auto;
         }
-        .certificados-table {
+
+        .cert-table {
             width: 100%;
             border-collapse: collapse;
+            font-size: .9rem;
         }
-        .certificados-table th {
-            background-color: #ecf0f1;
-            padding: 12px;
+
+        .cert-table th,
+        .cert-table td {
+            padding: .75rem .8rem;
             text-align: left;
-            font-weight: bold;
-            color: #2c3e50;
-            border-bottom: 2px solid #bdc3c7;
+            white-space: nowrap;
         }
-        .certificados-table td {
-            padding: 12px;
-            border-bottom: 1px solid #ecf0f1;
+
+        .cert-table th {
+            font-size: .8rem;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: #94a3b8;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
         }
-        .certificados-table tr:hover {
-            background-color: #f8f9fa;
+
+        .cert-table tbody tr:nth-child(even) {
+            background: #f9fafb;
         }
-        .estado-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 12px;
-            font-weight: bold;
+
+        .cert-table tbody tr:hover {
+            background: #eff6ff;
         }
-        .estado-activo {
-            background-color: #27ae60;
-            color: white;
+
+        /* Badges de estado */
+        .cert-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: .15rem .6rem;
+            border-radius: 999px;
+            font-size: .75rem;
+            font-weight: 600;
         }
-        .estado-vencido {
-            background-color: #e74c3c;
-            color: white;
+
+        .cert-badge span {
+            width: .45rem;
+            height: .45rem;
+            border-radius: 999px;
+            margin-right: .35rem;
         }
-        .estado-proximo {
-            background-color: #f39c12;
-            color: white;
+
+        .cert-badge--activo {
+            background: #dcfce7;
+            color: #166534;
         }
-        .action-link {
-            color: #3498db;
+        .cert-badge--activo span {
+            background: #22c55e;
+        }
+
+        .cert-badge--proximo {
+            background: #fef9c3;
+            color: #854d0e;
+        }
+        .cert-badge--proximo span {
+            background: #facc15;
+        }
+
+        .cert-badge--vencido {
+            background: #fee2e2;
+            color: #7f1d1d;
+        }
+        .cert-badge--vencido span {
+            background: #f97373;
+        }
+
+        /* Enlaces de acción */
+        .cert-actions a {
+            font-size: .8rem;
+            font-weight: 500;
+            color: #2563eb;
             text-decoration: none;
-            margin-right: 10px;
+            margin-right: .6rem;
         }
-        .action-link:hover {
+        .cert-actions a:hover {
             text-decoration: underline;
         }
-        .empty-state {
+
+        /* Empty state */
+        .cert-empty {
             text-align: center;
-            padding: 40px;
-            color: #7f8c8d;
+            padding: 2.5rem 1rem;
+            color: #94a3b8;
+            font-size: .95rem;
         }
-        .empty-state p {
-            margin-bottom: 20px;
+
+        .cert-empty-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: .3rem;
         }
-        .info-box {
-            background-color: #e8f5e9;
-            border-left: 4px solid #27ae60;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 4px;
+
+        .cert-empty-desc {
+            margin-bottom: 1rem;
         }
-        .info-box p {
-            color: #2c3e50;
-            margin: 5px 0;
+
+        .cert-empty-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: .55rem 1.2rem;
+            border-radius: 999px;
+            background: #22c55e;
+            color: #fff;
+            font-size: .85rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
         }
+        .cert-empty-btn:hover {
+            background: #16a34a;
+        }
+
+        /* Responsive */
         @media (max-width: 768px) {
-            .certificados-table {
-                font-size: 12px;
+            .cert-header {
+                flex-direction: column;
+                align-items: flex-start;
             }
-            .certificados-table th,
-            .certificados-table td {
-                padding: 8px;
+            .cert-table th,
+            .cert-table td {
+                padding: .55rem .6rem;
+                white-space: nowrap;
             }
         }
     </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Mis Certificados</h1>
-        <div class="header-actions">
-            <a href="/dashboard" class="back-link">← Volver al Dashboard</a>
-        </div>
-    </div>
 
-    <div class="container">
-        <div class="info-box">
-            <p><strong>📋 Total de certificados:</strong> {{ certificados|length }}</p>
-            <p><strong>ℹ️ Información:</strong> Aquí puede ver y descargar sus certificados emitidos.</p>
-        </div>
+    <a href="{{ url_for('dashboard') }}" class="link-back">
+        ← Volver al panel
+    </a>
 
-        <div class="section">
-            <h2>Listado de Certificados</h2>
-
-            {% if certificados %}
-            <table class="certificados-table">
-                <thead>
-                    <tr>
-                        <th>Número de Certificado</th>
-                        <th>Tipo de Servicio</th>
-                        <th>Fecha Emisión</th>
-                        <th>Fecha Vencimiento</th>
-                        <th>Estado</th>
-                        <th>Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for certificado in certificados %}
-                    <tr>
-                        <td><strong>{{ certificado.numero_certificado }}</strong></td>
-                        <td>{{ certificado.tipo_servicio_codigo }}</td>
-                        <td>{{ certificado.fecha_emision.strftime('%d/%m/%Y') }}</td>
-                        <td>{{ certificado.fecha_vencimiento.strftime('%d/%m/%Y') }}</td>
-                        <td>
-                            {% set hoy = now() %}
-                            {% set dias_restantes = (certificado.fecha_vencimiento - hoy).days %}
-                            
-                            {% if certificado.estado == 'ACTIVO' and dias_restantes > 30 %}
-                                <span class="estado-badge estado-activo">ACTIVO</span>
-                            {% elif certificado.estado == 'ACTIVO' and dias_restantes > 0 %}
-                                <span class="estado-badge estado-proximo">PRÓXIMO A VENCER ({{ dias_restantes }} días)</span>
-                            {% else %}
-                                <span class="estado-badge estado-vencido">VENCIDO</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            <a href="/certificados/{{ certificado.id }}/descargar" class="action-link">Descargar</a>
-                            <a href="/certificados/{{ certificado.numero_certificado }}/verificar" class="action-link" target="_blank">Verificar</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="empty-state">
-                <p>No tiene certificados emitidos.</p>
-                <a href="/solicitudes/nueva" class="back-link">Crear Nueva Solicitud</a>
+    <div class="cert-page">
+        <header class="cert-header">
+            <div>
+                <h1 class="cert-title">Mis certificados</h1>
+                <p class="cert-subtitle">
+                    Aquí puede ver y descargar los certificados emitidos por el sistema.
+                </p>
             </div>
-            {% endif %}
-        </div>
+        </header>
+
+        {# --- Resumen numérico --- #}
+        <section class="cert-summary">
+            {% set total = certificados|length if certificados else 0 %}
+            {% set activos = certificados|selectattr('estado','equalto','ACTIVO')|list|length if certificados else 0 %}
+            {% set vencidos = certificados|selectattr('estado','equalto','VENCIDO')|list|length if certificados else 0 %}
+
+            <div class="cert-summary-card">
+                <div class="cert-summary-label">Total certificados</div>
+                <div class="cert-summary-value">{{ total }}</div>
+            </div>
+
+            <div class="cert-summary-card">
+                <div class="cert-summary-label">Activos</div>
+                <div class="cert-summary-value">{{ activos }}</div>
+            </div>
+
+            <div class="cert-summary-card">
+                <div class="cert-summary-label">Vencidos</div>
+                <div class="cert-summary-value">{{ vencidos }}</div>
+            </div>
+        </section>
+
+        {# --- Tabla de certificados --- #}
+        <section class="card cert-card">
+            <div class="card-header">
+                <h2 class="card-title">Listado de certificados</h2>
+                <span class="card-subtitle">
+                Detalle de cada certificado, su vigencia y acciones disponibles.
+            </span>
+            </div>
+            <div class="card-body">
+                {% if certificados and certificados|length > 0 %}
+                    <div class="cert-table-wrapper">
+                        <table class="cert-table">
+                            <thead>
+                            <tr>
+                                <th>Número</th>
+                                <th>Tipo de servicio</th>
+                                <th>Fecha emisión</th>
+                                <th>Fecha vencimiento</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for certificado in certificados %}
+                                {% set hoy = now() %}
+                                {% set dias_restantes = (certificado.fecha_vencimiento - hoy).days %}
+
+                                {% if certificado.estado == 'ACTIVO' and dias_restantes > 30 %}
+                                    {% set estado_label = 'Activo' %}
+                                    {% set estado_class = 'cert-badge--activo' %}
+                                {% elif certificado.estado == 'ACTIVO' and dias_restantes > 0 %}
+                                    {% set estado_label = 'Próximo a vencer (' ~ dias_restantes ~ ' días)' %}
+                                    {% set estado_class = 'cert-badge--proximo' %}
+                                {% else %}
+                                    {% set estado_label = 'Vencido' %}
+                                    {% set estado_class = 'cert-badge--vencido' %}
+                                {% endif %}
+
+                                <tr>
+                                    <td><strong>{{ certificado.numero_certificado }}</strong></td>
+                                    <td>{{ certificado.tipo_servicio_codigo }}</td>
+                                    <td>
+                                        {{ certificado.fecha_emision.strftime('%d/%m/%Y') if certificado.fecha_emision else 'N/D' }}
+                                    </td>
+                                    <td>
+                                        {{ certificado.fecha_vencimiento.strftime('%d/%m/%Y') if certificado.fecha_vencimiento else 'N/D' }}
+                                    </td>
+                                    <td>
+                                    <span class="cert-badge {{ estado_class }}">
+                                        <span></span>{{ estado_label }}
+                                    </span>
+                                    </td>
+                                    <td class="cert-actions">
+                                        <a href="/certificados/{{ certificado.id }}/descargar">
+                                            Descargar
+                                        </a>
+                                        <a href="/certificados/{{ certificado.numero_certificado }}/verificar" target="_blank">
+                                            Verificar
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="cert-empty">
+                        <div class="cert-empty-title">No tiene certificados emitidos.</div>
+                        <p class="cert-empty-desc">
+                            Una vez sus solicitudes sean aprobadas, los certificados aparecerán en este listado.
+                        </p>
+                        <a href="/solicitudes/nueva" class="cert-empty-btn">
+                            Crear nueva solicitud
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </section>
     </div>
-</body>
-</html>
+
+{% endblock %}

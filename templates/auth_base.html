@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Acceso | Sistema de Gestión de Sustancias Controladas{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/auth.css') }}">
+</head>
+<body>
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <!-- Lado izquierdo: branding / descripción -->
+        <div class="auth-left">
+            <div class="brand">
+                <span class="badge">MSP · DNCD · VUS</span>
+                <h1>Sistema de Gestión de Sustancias Controladas</h1>
+                <p class="subtitle">
+                    Plataforma para la gestión digital de solicitudes, certificaciones y trazabilidad
+                    de sustancias controladas en la República Dominicana.
+                </p>
+            </div>
+
+            <ul class="highlights">
+                <li>Flujo digital de firmas y validaciones por rol.</li>
+                <li>Perfiles: Ventanilla Única (VUS), Técnico, Dirección y DNCD.</li>
+                <li>Almacenamiento seguro de documentos en la nube (Supabase Storage).</li>
+            </ul>
+        </div>
+
+        <!-- Lado derecho: formulario que cambia según la pantalla -->
+        <div class="auth-right">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <footer class="auth-footer">
+        <span>&copy; 2025 Ministerio de Salud Pública · República Dominicana</span>
+        <span>Versión 1.0 · RWII</span>
+    </footer>
+</div>
+</body>
+</html>

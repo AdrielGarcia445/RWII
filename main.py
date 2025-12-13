@@ -18,7 +18,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 # Configuración de la aplicación
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres.eticqhvvggccomubtgdf:intec1234567890@aws-1-us-east-2.pooler.supabase.com:6543/postgres'
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    "postgresql://postgres:1JesusEstevez!@db.iyhohfaitpzprhqybfzz.supabase.co:5432/postgres"
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     'pool_pre_ping': True,
@@ -28,8 +30,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 db = SQLAlchemy(app)
 
 # Configuración de Supabase Storage
-SUPABASE_URL = "https://eticqhvvggccomubtgdf.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0aWNxaHZ2Z2djY29tdWJ0Z2RmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDQzMjI2OCwiZXhwIjoyMDgwMDA4MjY4fQ.MbaxV6qYjIr_HHFP0eVW80GrizXijNuuddw_-BWOyNg"
+SUPABASE_URL = "https://iyhohfaitpzprhqybfzz.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5aG9oZmFpdHB6cHJocXliZnp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MjE5MjIsImV4cCI6MjA4MDk5NzkyMn0.4anGTblXF3f3iOJrKSFH5ITsiPbLPlwj6mbML7Qsvf4"
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 STORAGE_BUCKET = "documentos"
 
@@ -863,62 +865,136 @@ def register():
 @login_required
 def dashboard():
     rol = session.get('rol_codigo')
-    
+    user_id = session.get('user_id')
+
+    # Por defecto: todas las solicitudes
+    query = Solicitud.query
+
     if rol == 'USUARIO':
-        solicitudes = Solicitud.query.filter_by(usuario_id=session['user_id']).order_by(
-            Solicitud.fecha_creacion.desc()
-        ).all()
-        return render_template('dashboard.html', solicitudes=solicitudes)
+        query = query.filter_by(usuario_id=user_id)
     elif rol == 'VUS':
         # Redirigir a dashboard especializado de VUS
         return redirect(url_for('vus_dashboard'))
     elif rol == 'TECNICO_UPC':
-        solicitudes = Solicitud.query.filter(
+        query = query.filter(
             Solicitud.estado_codigo.in_(['EN_EVALUACION', 'ASIGNADO_UPC'])
-        ).order_by(Solicitud.fecha_creacion.desc()).all()
+        )
     elif rol == 'ENCARGADO_UPC':
         # El encargado ve todas las solicitudes de UPC (asignadas, en evaluación y aprobadas)
-        solicitudes = Solicitud.query.filter(
+        query = query.filter(
             Solicitud.estado_codigo.in_(['ASIGNADO_UPC', 'EN_EVALUACION', 'APROBADO_UPC'])
-        ).order_by(Solicitud.fecha_creacion.desc()).all()
+        )
     elif rol == 'DIRECCION':
-        solicitudes = Solicitud.query.filter(
+        query = query.filter(
             Solicitud.estado_codigo.in_(['APROBADO_UPC', 'PENDIENTE_FIRMA_DIRECCION'])
-        ).order_by(Solicitud.fecha_creacion.desc()).all()
+        )
     elif rol == 'DNCD':
-        solicitudes = Solicitud.query.filter(
+        query = query.filter(
             Solicitud.estado_codigo.in_(['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD'])
-        ).order_by(Solicitud.fecha_creacion.desc()).all()
-    else:
-        solicitudes = Solicitud.query.order_by(Solicitud.fecha_creacion.desc()).all()
-    
-    return render_template('dashboard.html', solicitudes=solicitudes)
+        )
+
+    solicitudes = query.order_by(Solicitud.fecha_creacion.desc()).all()
+
+    return render_template(
+        'dashboard.html',
+        solicitudes=solicitudes,
+        active_page='dashboard'
+    )
 
 # ============================================================================
 # RUTAS DE SOLICITUDES
 # ============================================================================
+
+@app.route('/solicitudes')
+@login_required
+def solicitudes():
+    rol = session.get('rol_codigo')
+    user_id = session.get('user_id')
+
+    query = Solicitud.query
+
+    if rol == 'USUARIO':
+        # El usuario solo ve sus propias solicitudes
+        query = query.filter_by(usuario_id=user_id)
+    elif rol == 'VUS':
+        # VUS puede ver todas las solicitudes (o las que definas luego)
+        # Aquí, por ahora, todas:
+        query = query
+    elif rol == 'TECNICO_UPC':
+        query = query.filter(
+            Solicitud.estado_codigo.in_(['EN_EVALUACION', 'ASIGNADO_UPC'])
+        )
+    elif rol == 'ENCARGADO_UPC':
+        query = query.filter(
+            Solicitud.estado_codigo.in_(['ASIGNADO_UPC', 'EN_EVALUACION', 'APROBADO_UPC'])
+        )
+    elif rol == 'DIRECCION':
+        query = query.filter(
+            Solicitud.estado_codigo.in_(['APROBADO_UPC', 'PENDIENTE_FIRMA_DIRECCION'])
+        )
+    elif rol == 'DNCD':
+        query = query.filter(
+            Solicitud.estado_codigo.in_(['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD'])
+        )
+    # else: otros roles verían todas por defecto
+
+    solicitudes = query.order_by(Solicitud.fecha_creacion.desc()).all()
+
+    return render_template(
+        'solicitudes.html',
+        solicitudes=solicitudes,
+        active_page='solicitudes'
+    )
 
 @app.route('/solicitudes/nueva', methods=['GET', 'POST'])
 @login_required
 @role_required('USUARIO')
 def nueva_solicitud():
     if request.method == 'POST':
-        data = request.get_json() if request.is_json else request.form
-        
+        # Soportamos JSON (API) y formulario HTML
+        if request.is_json:
+            data = request.get_json()
+            pagado = bool(data.get('pagado', False))
+            monto_pagado = data.get('monto_pagado', None)
+            referencia_pago = data.get('referencia_pago') or None
+        else:
+            data = request.form
+
+            # Checkbox "Marcar como pagado"
+            pagado = data.get('pagado') in ['on', 'true', '1', 'True']
+
+            # Monto pagado: puede venir vacío => lo convertimos a None
+            monto_str = (data.get('monto_pagado') or '').strip()
+            if pagado and monto_str:
+                try:
+                    monto_pagado = float(monto_str)
+                except ValueError:
+                    # Si viene algo raro, lo dejamos en None
+                    monto_pagado = None
+            else:
+                monto_pagado = None
+
+            # Referencia de pago: solo tiene sentido si está pagado
+            referencia_pago = (data.get('referencia_pago') or '').strip()
+            if not referencia_pago:
+                referencia_pago = None
+            if not pagado:
+                referencia_pago = None
+
         solicitud = Solicitud(
             numero_expediente=generar_numero_expediente(),
             usuario_id=session['user_id'],
             servicio_id=data.get('servicio_id'),
             estado_codigo='RECIBIDO',
             datos_formulario=data.get('datos_formulario'),
-            pagado=data.get('pagado', False),
-            monto_pagado=data.get('monto_pagado', 0),
-            referencia_pago=data.get('referencia_pago')
+            pagado=pagado,
+            monto_pagado=monto_pagado,
+            referencia_pago=referencia_pago
         )
-        
+
         db.session.add(solicitud)
         db.session.commit()
-        
+
         # Registrar historial
         historial = HistorialEstadoSolicitud(
             solicitud_id=solicitud.id,
@@ -926,37 +1002,36 @@ def nueva_solicitud():
             usuario_id=session['user_id']
         )
         db.session.add(historial)
-        
-        registrar_auditoria('CREAR_SOLICITUD', solicitud.id, f'Solicitud {solicitud.numero_expediente} creada')
-        
+
+        registrar_auditoria(
+            'CREAR_SOLICITUD',
+            solicitud.id,
+            f'Solicitud {solicitud.numero_expediente} creada'
+        )
+
         # Procesar archivos adjuntos si existen
         if 'documentos' in request.files:
             archivos = request.files.getlist('documentos')
             for archivo in archivos:
                 if archivo and archivo.filename:
-                    # Validar extensión
                     extensiones_permitidas = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx']
                     extension = archivo.filename.rsplit('.', 1)[1].lower() if '.' in archivo.filename else ''
-                    
+
                     if extension in extensiones_permitidas:
                         try:
-                            # Generar nombre único
                             nombre_storage = f"solicitud_{solicitud.id}/{str(uuid.uuid4())}.{extension}"
-                            
-                            # Leer contenido del archivo
                             file_content = archivo.read()
-                            
-                            # Subir a Supabase Storage
+
                             supabase.storage.from_(STORAGE_BUCKET).upload(
                                 path=nombre_storage,
                                 file=file_content,
-                                file_options={"content-type": archivo.content_type or "application/octet-stream"}
+                                file_options={
+                                    "content-type": archivo.content_type or "application/octet-stream"
+                                }
                             )
-                            
-                            # Obtener URL pública
+
                             file_url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(nombre_storage)
-                            
-                            # Registrar documento en BD
+
                             documento = Documento(
                                 solicitud_id=solicitud.id,
                                 origen='USUARIO',
@@ -966,13 +1041,12 @@ def nueva_solicitud():
                                 ruta=file_url
                             )
                             db.session.add(documento)
-                            
+
                         except Exception as e:
                             print(f"Error al subir documento {archivo.filename}: {str(e)}")
-            
-            # Guardar todos los documentos
+
             db.session.commit()
-        
+
         # Notificar a VUS
         usuarios_vus = Usuario.query.filter_by(rol_codigo='VUS', activo=True).all()
         for vus in usuarios_vus:
@@ -982,13 +1056,20 @@ def nueva_solicitud():
                 f'Nueva solicitud {solicitud.numero_expediente} recibida',
                 solicitud.id
             )
-        
+
         if request.is_json:
-            return jsonify({'success': True, 'solicitud_id': solicitud.id, 'numero_expediente': solicitud.numero_expediente})
+            return jsonify({
+                'success': True,
+                'solicitud_id': solicitud.id,
+                'numero_expediente': solicitud.numero_expediente
+            })
+
         return redirect(url_for('ver_solicitud', solicitud_id=solicitud.id))
-    
+
+    # GET: mostrar formulario
     servicios = CatalogoServicio.query.filter_by(activo=True).all()
     return render_template('nueva_solicitud.html', servicios=servicios)
+
 
 @app.route('/solicitudes/<solicitud_id>')
 @login_required
@@ -1814,11 +1895,11 @@ def admin_auditoria():
     """Panel de auditoría del sistema"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)
-    
+
     pagination = Auditoria.query.order_by(Auditoria.timestamp.desc()).paginate(
         page=page, per_page=per_page, error_out=False
     )
-    
+
     return render_template('admin/auditoria.html', pagination=pagination)
 
 # ============================================================================

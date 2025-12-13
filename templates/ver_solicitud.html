@@ -1,673 +1,488 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solicitud {{ solicitud.numero_expediente }}</title>
+{% extends "base_app.html" %}
+
+{% block title %}Solicitud {{ solicitud.numero_expediente }} | Sistema de Gestión de Sustancias Controladas{% endblock %}
+
+{% block breadcrumb %}
+    <span class="breadcrumb-main">Solicitudes</span>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-sub">Detalle solicitud</span>
+{% endblock %}
+
+{% block content %}
+
     <style>
-        * {
+        /* Estilos SOLO para esta pantalla */
+        .ver-solicitud-page {
+            margin-top: .5rem;
+        }
+
+        .vs-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .vs-title {
+            font-size: 1.7rem;
+            font-weight: 700;
+            margin: 0 0 .3rem;
+            color: #0f172a;
+        }
+
+        .vs-subtitle {
             margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+            font-size: .95rem;
+            color: #64748b;
         }
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-        }
-        .header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 15px 30px;
-            display: flex;
-            justify-content: space-between;
+
+        .vs-status-pill {
+            display: inline-flex;
             align-items: center;
+            gap: .35rem;
+            padding: .25rem .8rem;
+            border-radius: 999px;
+            font-size: .8rem;
+            font-weight: 600;
+            border: 1px solid transparent;
         }
-        .header h1 {
-            font-size: 20px;
+
+        .vs-status-dot {
+            width: .5rem;
+            height: .5rem;
+            border-radius: 999px;
+            background: #94a3b8;
         }
-        .back-link {
-            color: white;
-            text-decoration: none;
-            padding: 8px 15px;
-            background-color: #34495e;
-            border-radius: 4px;
+
+        /* Colores por estado */
+        .vs-status-recibido {
+            background: #fef9c3;
+            border-color: #facc15;
+            color: #854d0e;
         }
-        .back-link:hover {
-            background-color: #4a5f7f;
+        .vs-status-recibido .vs-status-dot {
+            background: #facc15;
         }
-        .container {
-            max-width: 1200px;
-            margin: 30px auto;
-            padding: 0 20px;
+
+        .vs-status-evaluacion {
+            background: #e0f2fe;
+            border-color: #38bdf8;
+            color: #0c4a6e;
         }
-        .section {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+        .vs-status-evaluacion .vs-status-dot {
+            background: #38bdf8;
         }
-        h2 {
-            color: #2c3e50;
-            margin-bottom: 15px;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
+
+        .vs-status-aprobado {
+            background: #dcfce7;
+            border-color: #22c55e;
+            color: #166534;
         }
-        .info-grid {
+        .vs-status-aprobado .vs-status-dot {
+            background: #22c55e;
+        }
+
+        .vs-status-rechazado {
+            background: #fee2e2;
+            border-color: #f97373;
+            color: #7f1d1d;
+        }
+        .vs-status-rechazado .vs-status-dot {
+            background: #f97373;
+        }
+
+        /* Grid principal */
+        .vs-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-bottom: 20px;
+            grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr);
+            gap: 1.25rem;
+            margin-bottom: 1.5rem;
         }
-        .info-item {
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
+
+        /* Ajuste de tarjetas usando las .card existentes del sistema */
+        .vs-card {
+            border-radius: 1.1rem;
         }
-        .info-item label {
-            display: block;
-            font-size: 12px;
-            color: #7f8c8d;
-            margin-bottom: 5px;
+
+        /* Resumen de datos estilo "llave: valor" */
+        .vs-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: .75rem 2rem;
+            font-size: .9rem;
         }
-        .info-item strong {
-            font-size: 14px;
-            color: #2c3e50;
+
+        .vs-summary-label {
+            font-size: .78rem;
+            text-transform: uppercase;
+            letter-spacing: .06em;
+            color: #94a3b8;
+            margin-bottom: .1rem;
         }
-        .badge {
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 13px;
-            font-weight: bold;
+
+        .vs-summary-value {
+            color: #0f172a;
+            font-weight: 500;
+            word-break: break-word;
         }
-        .badge-recibido { background-color: #3498db; color: white; }
-        .badge-devuelto { background-color: #e74c3c; color: white; }
-        .badge-asignado { background-color: #f39c12; color: white; }
-        .badge-evaluacion { background-color: #9b59b6; color: white; }
-        .badge-aprobado { background-color: #27ae60; color: white; }
-        .badge-rechazado { background-color: #c0392b; color: white; }
-        .badge-firma { background-color: #16a085; color: white; }
-        .badge-entregado { background-color: #2c3e50; color: white; }
-        .timeline {
-            position: relative;
-            padding-left: 30px;
+
+        .vs-summary-value.muted {
+            color: #64748b;
+            font-weight: 400;
         }
-        .timeline-item {
-            position: relative;
-            padding-bottom: 20px;
+
+        /* Documentos */
+        .vs-files-empty {
+            font-size: .9rem;
+            color: #94a3b8;
+            margin: .3rem 0 0;
         }
-        .timeline-item:before {
-            content: '';
-            position: absolute;
-            left: -24px;
-            top: 0;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background-color: #3498db;
-            border: 2px solid white;
-            box-shadow: 0 0 0 2px #3498db;
+
+        .vs-files-list {
+            display: flex;
+            flex-direction: column;
+            gap: .6rem;
+            margin-top: .3rem;
         }
-        .timeline-item:after {
-            content: '';
-            position: absolute;
-            left: -19px;
-            top: 12px;
-            width: 2px;
-            height: 100%;
-            background-color: #e0e0e0;
-        }
-        .timeline-item:last-child:after {
-            display: none;
-        }
-        .timeline-date {
-            font-size: 12px;
-            color: #7f8c8d;
-            margin-bottom: 5px;
-        }
-        .timeline-content {
-            font-size: 14px;
-            color: #2c3e50;
-        }
-        .observaciones-item {
-            border-left: 3px solid #3498db;
-            padding: 10px 15px;
-            margin-bottom: 15px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-        }
-        .observaciones-header {
+
+        .vs-file-item {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 8px;
+            align-items: center;
+            gap: .75rem;
+            padding: .6rem .8rem;
+            border-radius: .85rem;
+            border: 1px dashed #cbd5f5;
+            background: #f8fafc;
+            font-size: .85rem;
         }
-        .observaciones-autor {
-            font-weight: bold;
-            color: #2c3e50;
+
+        .vs-file-name {
+            font-weight: 500;
+            color: #0f172a;
+            overflow-wrap: anywhere;
         }
-        .observaciones-fecha {
-            font-size: 12px;
-            color: #7f8c8d;
+
+        .vs-file-meta {
+            font-size: .75rem;
+            color: #94a3b8;
         }
-        .observaciones-texto {
-            color: #34495e;
-            line-height: 1.5;
+
+        .vs-file-actions a {
+            font-size: .8rem;
+            font-weight: 500;
+            color: #2563eb;
+            text-decoration: none;
         }
-        .documentos-list {
+        .vs-file-actions a:hover {
+            text-decoration: underline;
+        }
+
+        /* Timeline historial */
+        .vs-timeline {
+            position: relative;
             list-style: none;
+            padding-left: 1.3rem;
+            margin: .3rem 0 0;
         }
-        .documentos-list li {
-            padding: 10px;
-            border-bottom: 1px solid #ecf0f1;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .documento-nombre {
-            color: #2c3e50;
-        }
-        .btn-download {
-            padding: 5px 15px;
-            background-color: #3498db;
-            color: white;
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-        .btn-download:hover {
-            background-color: #2980b9;
-        }
-        .empty-state {
-            text-align: center;
-            padding: 30px;
-            color: #7f8c8d;
-        }
-        .actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 20px;
-        }
-        .btn {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            text-decoration: none;
-            display: inline-block;
-        }
-        
-        /* Modal de confirmación */
-        .confirmation-overlay {
-            display: none;
-            position: fixed;
+        .vs-timeline::before {
+            content: "";
+            position: absolute;
+            left: .4rem;
             top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.5);
-            z-index: 9999;
-            justify-content: center;
-            align-items: center;
-            animation: fadeIn 0.3s ease;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, #bbf7d0, #e2e8f0);
         }
-        
-        .confirmation-modal {
-            background: white;
-            padding: 40px;
-            border-radius: 16px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-            text-align: center;
-            max-width: 500px;
-            animation: slideUp 0.3s ease;
+        .vs-timeline-item {
+            position: relative;
+            margin-bottom: 1rem;
         }
-        
-        .confirmation-icon {
-            font-size: 80px;
-            margin-bottom: 20px;
-            animation: scaleIn 0.5s ease;
+        .vs-timeline-dot {
+            position: absolute;
+            left: -.02rem;
+            top: .2rem;
+            width: .75rem;
+            height: .75rem;
+            border-radius: 999px;
+            background: #22c55e;
+            border: 2px solid #ecfdf3;
+            box-shadow: 0 0 0 2px rgba(16, 185, 129, .25);
         }
-        
-        .confirmation-icon.success {
-            color: #27ae60;
+        .vs-timeline-content {
+            padding-left: 1.2rem;
         }
-        
-        .confirmation-icon.error {
-            color: #e74c3c;
+        .vs-timeline-title {
+            font-size: .9rem;
+            font-weight: 600;
+            color: #0f172a;
         }
-        
-        .confirmation-title {
-            font-size: 24px;
-            font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 10px;
+        .vs-timeline-meta {
+            font-size: .78rem;
+            color: #94a3b8;
+            margin-top: .12rem;
         }
-        
-        .confirmation-message {
-            font-size: 16px;
-            color: #7f8c8d;
-            margin-bottom: 20px;
-            line-height: 1.5;
+        .vs-timeline-user {
+            font-size: .8rem;
+            color: #64748b;
+            margin-top: .05rem;
         }
-        
-        .confirmation-spinner {
-            display: inline-block;
-            width: 40px;
-            height: 40px;
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-top: 20px;
+
+        /* Observaciones */
+        .vs-notes-empty {
+            font-size: .9rem;
+            color: #94a3b8;
         }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+
+        .vs-note {
+            padding: .6rem .8rem;
+            border-radius: .8rem;
+            border: 1px solid #e2e8f0;
+            background: #f8fafc;
+            font-size: .85rem;
+            margin-bottom: .6rem;
         }
-        
-        @keyframes slideUp {
-            from { transform: translateY(50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+
+        .vs-note-meta {
+            font-size: .75rem;
+            color: #94a3b8;
+            margin-bottom: .15rem;
         }
-        
-        @keyframes scaleIn {
-            from { transform: scale(0); }
-            to { transform: scale(1); }
+
+        .vs-note-text {
+            color: #475569;
         }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .btn-primary {
-            background-color: #3498db;
-            color: white;
-        }
-        .btn-success {
-            background-color: #27ae60;
-            color: white;
-        }
-        .btn-danger {
-            background-color: #e74c3c;
-            color: white;
-        }
-        .btn-warning {
-            background-color: #f39c12;
-            color: white;
-        }
-        @media (max-width: 768px) {
-            .info-grid {
-                grid-template-columns: 1fr;
-            }
-            .actions {
-                flex-direction: column;
+
+        /* Responsive */
+        @media (max-width: 992px) {
+            .vs-grid {
+                grid-template-columns: minmax(0, 1fr);
             }
         }
     </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Solicitud {{ solicitud.numero_expediente }}</h1>
-        <a href="/dashboard" class="back-link">← Volver al Dashboard</a>
-    </div>
 
-    <div class="container">
-        <!-- Información General -->
-        <div class="section">
-            <h2>Información General</h2>
-            <div class="info-grid">
-                <div class="info-item">
-                    <label>Número de Expediente</label>
-                    <strong>{{ solicitud.numero_expediente }}</strong>
-                </div>
-                <div class="info-item">
-                    <label>Estado Actual</label>
-                    <span class="badge badge-{{ solicitud.estado_codigo.lower().replace('_', '-') }}">
-                        {{ solicitud.estado.descripcion }}
-                    </span>
-                </div>
-                <div class="info-item">
-                    <label>Servicio Solicitado</label>
-                    <strong>{{ solicitud.servicio.nombre }}</strong>
-                </div>
-                <div class="info-item">
-                    <label>Solicitante</label>
-                    <strong>{{ solicitud.usuario.name }}</strong>
-                </div>
-                <div class="info-item">
-                    <label>Fecha de Creación</label>
-                    <strong>{{ solicitud.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</strong>
-                </div>
-                <div class="info-item">
-                    <label>Última Actualización</label>
-                    <strong>{{ solicitud.fecha_actualizacion.strftime('%d/%m/%Y %H:%M') }}</strong>
+    <a href="{{ url_for('dashboard') }}" class="link-back">
+        ← Volver al panel
+    </a>
+
+    <div class="ver-solicitud-page">
+
+        {# --- Encabezado con estado --- #}
+        {% set estado_label = 'Estado no definido' %}
+        {% set estado_class = 'vs-status-recibido' %}
+        {% if solicitud.estado_codigo == 'RECIBIDO' %}
+            {% set estado_label = 'Recibida en VUS' %}
+            {% set estado_class = 'vs-status-recibido' %}
+        {% elif solicitud.estado_codigo in ['EN_EVALUACION', 'ASIGNADO_UPC'] %}
+            {% set estado_label = 'En evaluación técnica' %}
+            {% set estado_class = 'vs-status-evaluacion' %}
+        {% elif solicitud.estado_codigo in ['APROBADO_UPC', 'PENDIENTE_FIRMA_DIRECCION', 'ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD'] %}
+            {% set estado_label = 'En proceso de aprobación' %}
+            {% set estado_class = 'vs-status-aprobado' %}
+        {% elif solicitud.estado_codigo in ['RECHAZADO', 'CERRADO'] %}
+            {% set estado_label = 'Cerrada / Rechazada' %}
+            {% set estado_class = 'vs-status-rechazado' %}
+        {% endif %}
+
+        <header class="vs-header">
+            <div>
+                <h1 class="vs-title">Solicitud {{ solicitud.numero_expediente }}</h1>
+                <p class="vs-subtitle">Detalle completo del expediente de sustancias controladas.</p>
+            </div>
+            <div>
+                <div class="vs-status-pill {{ estado_class }}">
+                    <span class="vs-status-dot"></span>
+                    <span>{{ estado_label }}</span>
                 </div>
             </div>
+        </header>
 
-            {% if solicitud.datos_formulario %}
-            <div class="info-item">
-                <label>Datos Adicionales</label>
-                <pre style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;">{{ solicitud.datos_formulario | tojson(indent=2) }}</pre>
-            </div>
-            {% endif %}
+        {# --- Resumen + Documentos --- #}
+        <div class="vs-grid">
+            <section class="card card-primary vs-card">
+                <div class="card-header">
+                    <h2 class="card-title">Resumen de la solicitud</h2>
+                    <span class="card-subtitle">Información clave del expediente.</span>
+                </div>
+                <div class="card-body">
+                    <div class="vs-summary-grid">
+                        <div>
+                            <div class="vs-summary-label">No. expediente</div>
+                            <div class="vs-summary-value">{{ solicitud.numero_expediente }}</div>
+                        </div>
 
-            <!-- Acciones según el rol -->
-            <div class="actions">
-                {% if session.rol_codigo == 'VUS' and solicitud.estado_codigo in ['RECIBIDO', 'DEVUELTO_VUS'] %}
-                <button class="btn btn-success" onclick="evaluarVUS(true)">Aprobar Documentación</button>
-                <button class="btn btn-danger" onclick="evaluarVUS(false)">Devolver Solicitud</button>
-                {% endif %}
+                        <div>
+                            <div class="vs-summary-label">Solicitante</div>
+                            <div class="vs-summary-value">
+                                {% if solicitud.usuario and solicitud.usuario.correo %}
+                                    {{ solicitud.usuario.correo }}
+                                {% else %}
+                                    Usuario interno
+                                {% endif %}
+                            </div>
+                        </div>
 
-                {% if session.rol_codigo in ['TECNICO_UPC', 'ENCARGADO_UPC'] and solicitud.estado_codigo in ['ASIGNADO_UPC', 'EN_EVALUACION'] %}
-                <button class="btn btn-success" onclick="evaluarUPC(true)">Aprobar Evaluación</button>
-                <button class="btn btn-danger" onclick="evaluarUPC(false)">Rechazar Solicitud</button>
-                {% endif %}
+                        <div>
+                            <div class="vs-summary-label">Servicio</div>
+                            <div class="vs-summary-value">
+                                {{ solicitud.servicio.nombre if solicitud.servicio else 'Sin información de servicio' }}
+                            </div>
+                        </div>
 
-                {% if session.rol_codigo == 'DIRECCION' and solicitud.estado_codigo in ['APROBADO_UPC', 'PENDIENTE_FIRMA_DIRECCION'] %}
-                <button class="btn btn-success" onclick="firmarDireccion()">Firmar y Aprobar</button>
-                {% endif %}
+                        <div>
+                            <div class="vs-summary-label">Fecha de creación</div>
+                            <div class="vs-summary-value muted">
+                                {{ solicitud.fecha_creacion.strftime('%d/%m/%Y %H:%M') if solicitud.fecha_creacion else 'N/D' }}
+                            </div>
+                        </div>
 
-                {% if session.rol_codigo == 'DNCD' and solicitud.estado_codigo in ['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD'] %}
-                <button class="btn btn-success" onclick="firmarDNCD()">Firmar Certificado</button>
-                {% endif %}
+                        <div>
+                            <div class="vs-summary-label">Pago</div>
+                            <div class="vs-summary-value">
+                                {% if solicitud.pagado %}
+                                    Pagado
+                                    {% if solicitud.monto_pagado %}
+                                        <span class="vs-summary-value muted">
+                                        · RD$ {{ '%.2f'|format(solicitud.monto_pagado) }}
+                                    </span>
+                                    {% endif %}
+                                {% else %}
+                                    Pendiente de pago
+                                {% endif %}
+                            </div>
+                        </div>
 
-                {% if session.rol_codigo == 'VUS' and solicitud.estado_codigo == 'APROBADO_FINAL' %}
-                <button class="btn btn-primary" onclick="entregarCertificado()">Entregar Certificado</button>
-                {% endif %}
-
-                {% if session.rol_codigo == 'USUARIO' and solicitud.estado_codigo in ['DEVUELTO_VUS', 'RECHAZADO_UPC'] %}
-                <a href="#" class="btn btn-warning" onclick="resubmitir()">Resubmitir Solicitud</a>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- Historial de Estados -->
-        <div class="section">
-            <h2>Historial de Estados</h2>
-            {% if historial %}
-            <div class="timeline">
-                {% for item in historial %}
-                <div class="timeline-item">
-                    <div class="timeline-date">{{ item.fecha.strftime('%d/%m/%Y %H:%M') }}</div>
-                    <div class="timeline-content">
-                        <strong>{{ item.estado.descripcion }}</strong>
-                        {% if item.comentario %}
-                        <br><span style="color: #7f8c8d;">{{ item.comentario }}</span>
-                        {% endif %}
+                        <div style="grid-column: 1 / -1;">
+                            <div class="vs-summary-label">Datos del formulario</div>
+                            <div class="vs-summary-value muted">
+                                {% if solicitud.datos_formulario %}
+                                    {{ solicitud.datos_formulario }}
+                                {% else %}
+                                    No se registraron datos adicionales del formulario.
+                                {% endif %}
+                            </div>
+                        </div>
                     </div>
                 </div>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="empty-state">
-                <p>No hay historial de estados disponible.</p>
-            </div>
-            {% endif %}
-        </div>
+            </section>
 
-        <!-- Observaciones -->
-        <div class="section">
-            <h2>Observaciones</h2>
-            {% if observaciones %}
-                {% for obs in observaciones %}
-                <div class="observaciones-item">
-                    <div class="observaciones-header">
-                        <span class="observaciones-autor">{{ obs.rol_codigo }}</span>
-                        <span class="observaciones-fecha">{{ obs.fecha.strftime('%d/%m/%Y %H:%M') }}</span>
-                    </div>
-                    <div class="observaciones-texto">{{ obs.texto }}</div>
+            <section class="card vs-card">
+                <div class="card-header">
+                    <h2 class="card-title">Documentos adjuntos</h2>
+                    <span class="card-subtitle">Archivos suministrados para esta solicitud.</span>
                 </div>
-                {% endfor %}
-            {% else %}
-            <div class="empty-state">
-                <p>No hay observaciones registradas.</p>
-            </div>
-            {% endif %}
+                <div class="card-body">
+                    {% if documentos and documentos|length > 0 %}
+                        <div class="vs-files-list">
+                            {% for doc in documentos %}
+                                <div class="vs-file-item">
+                                    <div>
+                                        <div class="vs-file-name">{{ doc.nombre_original }}</div>
+                                        <div class="vs-file-meta">
+                                            {{ doc.tipo or 'Documento de soporte' }}
+                                        </div>
+                                    </div>
+                                    <div class="vs-file-actions">
+                                        {% if doc.ruta %}
+                                            <a href="{{ doc.ruta }}" target="_blank" rel="noopener">
+                                                Ver / descargar
+                                            </a>
+                                        {% else %}
+                                            <span class="vs-file-meta">Sin enlace</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="vs-files-empty">
+                            Esta solicitud no tiene documentos adjuntos.
+                        </p>
+                    {% endif %}
+                </div>
+            </section>
         </div>
 
-        <!-- Documentos Adjuntos -->
-        <div class="section">
-            <h2>Documentos Adjuntos</h2>
-            {% if documentos %}
-            <ul class="documentos-list">
-                {% for doc in documentos %}
-                <li>
-                    <span class="documento-nombre">{{ doc.nombre_original }} ({{ doc.tipo }})</span>
-                    <a href="/documentos/{{ doc.id }}/descargar" class="btn-download">Descargar</a>
-                </li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <div class="empty-state">
-                <p>No hay documentos adjuntos.</p>
+        {# --- Historial de estados --- #}
+        <section class="card vs-card">
+            <div class="card-header">
+                <h2 class="card-title">Historial de estados</h2>
+                <span class="card-subtitle">Registro cronológico de cambios en el expediente.</span>
             </div>
-            {% endif %}
-        </div>
+            <div class="card-body">
+                {% if historial and historial|length > 0 %}
+                    <ul class="vs-timeline">
+                        {% for h in historial|reverse %}
+                            <li class="vs-timeline-item">
+                                <div class="vs-timeline-dot"></div>
+                                <div class="vs-timeline-content">
+                                    <div class="vs-timeline-title">
+                                        {% if h.estado_codigo == 'RECIBIDO' %}
+                                            Recibido en VUS
+                                        {% elif h.estado_codigo == 'EN_EVALUACION' %}
+                                            En evaluación técnica
+                                        {% elif h.estado_codigo == 'ASIGNADO_UPC' %}
+                                            Asignado a UPC
+                                        {% elif h.estado_codigo == 'APROBADO_UPC' %}
+                                            Aprobado por UPC
+                                        {% elif h.estado_codigo == 'PENDIENTE_FIRMA_DIRECCION' %}
+                                            Pendiente firma de Dirección
+                                        {% elif h.estado_codigo == 'ENVIADO_DNCD' %}
+                                            Enviado a DNCD
+                                        {% elif h.estado_codigo == 'PENDIENTE_FIRMA_DNCD' %}
+                                            Pendiente firma DNCD
+                                        {% elif h.estado_codigo == 'RECHAZADO' %}
+                                            Solicitud rechazada
+                                        {% else %}
+                                            {{ h.estado_codigo }}
+                                        {% endif %}
+                                    </div>
+                                    <div class="vs-timeline-meta">
+                                        {{ h.fecha.strftime('%d/%m/%Y %H:%M') if h.fecha else 'Fecha no disponible' }}
+                                    </div>
+                                    <div class="vs-timeline-user">
+                                        Usuario: {{ h.usuario_id }}
+                                    </div>
+                                </div>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="vs-notes-empty">
+                        No hay historial registrado para esta solicitud.
+                    </p>
+                {% endif %}
+            </div>
+        </section>
+
+        {# --- Observaciones --- #}
+        <section class="card vs-card">
+            <div class="card-header">
+                <h2 class="card-title">Observaciones y notas internas</h2>
+                <span class="card-subtitle">Comentarios registrados durante la gestión del expediente.</span>
+            </div>
+            <div class="card-body">
+                {% if observaciones and observaciones|length > 0 %}
+                    {% for obs in observaciones %}
+                        <article class="vs-note">
+                            <div class="vs-note-meta">
+                                {{ obs.fecha.strftime('%d/%m/%Y %H:%M') if obs.fecha else 'Fecha no disponible' }}
+                                · Usuario {{ obs.usuario_id }}
+                            </div>
+                            <div class="vs-note-text">
+                                {{ obs.texto }}
+                            </div>
+                        </article>
+                    {% endfor %}
+                {% else %}
+                    <p class="vs-notes-empty">
+                        No hay observaciones registradas para esta solicitud.
+                    </p>
+                {% endif %}
+            </div>
+        </section>
+
     </div>
 
-    <!-- Modal de confirmación -->
-    <div class="confirmation-overlay" id="confirmationOverlay">
-        <div class="confirmation-modal">
-            <div class="confirmation-icon" id="confirmationIcon">✓</div>
-            <div class="confirmation-title" id="confirmationTitle">Procesando...</div>
-            <div class="confirmation-message" id="confirmationMessage">Por favor espere...</div>
-            <div class="confirmation-spinner" id="confirmationSpinner"></div>
-        </div>
-    </div>
-
-    <script>
-        function showConfirmation(type, title, message, showSpinner = true) {
-            const overlay = document.getElementById('confirmationOverlay');
-            const icon = document.getElementById('confirmationIcon');
-            const titleEl = document.getElementById('confirmationTitle');
-            const messageEl = document.getElementById('confirmationMessage');
-            const spinner = document.getElementById('confirmationSpinner');
-            
-            if (type === 'success') {
-                icon.innerHTML = '✓';
-                icon.className = 'confirmation-icon success';
-            } else if (type === 'error') {
-                icon.innerHTML = '✗';
-                icon.className = 'confirmation-icon error';
-            } else if (type === 'loading') {
-                icon.innerHTML = '⏳';
-                icon.className = 'confirmation-icon';
-            }
-            
-            titleEl.textContent = title;
-            messageEl.textContent = message;
-            spinner.style.display = showSpinner ? 'inline-block' : 'none';
-            overlay.style.display = 'flex';
-        }
-        
-        function hideConfirmation() {
-            document.getElementById('confirmationOverlay').style.display = 'none';
-        }
-        
-        function evaluarVUS(cumple) {
-            const observaciones = cumple ? '' : prompt('Ingrese las observaciones:');
-            if (!cumple && !observaciones) return;
-
-            showConfirmation('loading', 'Procesando...', 'Enviando evaluación al servidor');
-
-            fetch(`/solicitudes/{{ solicitud.id }}/evaluar-vus`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    cumple: cumple,
-                    observaciones: observaciones
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    if (cumple) {
-                        showConfirmation('success', '¡Evaluación Aprobada!', 'La solicitud ha sido aprobada y enviada a UPC para evaluación técnica', false);
-                    } else {
-                        showConfirmation('success', 'Solicitud Devuelta', 'La solicitud ha sido devuelta al usuario con observaciones', false);
-                    }
-                    setTimeout(() => location.reload(), 2000);
-                } else {
-                    showConfirmation('error', 'Error', 'Ocurrió un error al procesar la evaluación', false);
-                    setTimeout(hideConfirmation, 2000);
-                }
-            })
-            .catch(error => {
-                showConfirmation('error', 'Error de Conexión', 'No se pudo conectar con el servidor', false);
-                setTimeout(hideConfirmation, 2000);
-            });
-        }
-
-        function evaluarUPC(aprobado) {
-            const observaciones = !aprobado ? prompt('Ingrese las observaciones:') : '';
-            if (!aprobado && !observaciones) return;
-
-            showConfirmation('loading', 'Procesando...', 'Enviando evaluación técnica al servidor');
-
-            fetch(`/solicitudes/{{ solicitud.id }}/evaluar-upc`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    aprobado: aprobado,
-                    observaciones: observaciones
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    if (aprobado) {
-                        showConfirmation('success', '¡Evaluación Técnica Aprobada!', 'La solicitud ha sido aprobada y enviada a Dirección para firma', false);
-                    } else {
-                        showConfirmation('error', 'Solicitud Rechazada', 'La solicitud ha sido rechazada. El usuario ha sido notificado', false);
-                    }
-                    setTimeout(() => location.reload(), 2500);
-                } else {
-                    showConfirmation('error', 'Error', 'Ocurrió un error al procesar la evaluación', false);
-                    setTimeout(hideConfirmation, 2000);
-                }
-            })
-            .catch(error => {
-                showConfirmation('error', 'Error de Conexión', 'No se pudo conectar con el servidor', false);
-                setTimeout(hideConfirmation, 2000);
-            });
-        }
-
-        function firmarDireccion() {
-            if (confirm('¿Está seguro de firmar y aprobar esta solicitud?')) {
-                showConfirmation('loading', 'Procesando...', 'Firmando solicitud y generando certificado');
-                
-                fetch(`/solicitudes/{{ solicitud.id }}/firmar-direccion`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ firma_digital: 'FIRMA_DIRECCION' })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showConfirmation('success', '¡Firma Exitosa!', 'La solicitud ha sido firmada por Dirección', false);
-                        setTimeout(() => location.reload(), 2000);
-                    } else {
-                        showConfirmation('error', 'Error', 'Ocurrió un error al firmar la solicitud', false);
-                        setTimeout(hideConfirmation, 2000);
-                    }
-                })
-                .catch(error => {
-                    showConfirmation('error', 'Error de Conexión', 'No se pudo conectar con el servidor', false);
-                    setTimeout(hideConfirmation, 2000);
-                });
-            }
-        }
-
-        function firmarDNCD() {
-            if (confirm('¿Está seguro de firmar este certificado?')) {
-                showConfirmation('loading', 'Procesando...', 'Firmando certificado con autorización DNCD');
-                
-                fetch(`/solicitudes/{{ solicitud.id }}/firmar-dncd`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ firma_digital: 'FIRMA_DNCD' })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showConfirmation('success', '¡Certificado Firmado!', 'El certificado ha sido firmado por DNCD y está listo para entrega', false);
-                        setTimeout(() => location.reload(), 2500);
-                    } else {
-                        showConfirmation('error', 'Error', 'Ocurrió un error al firmar el certificado', false);
-                        setTimeout(hideConfirmation, 2000);
-                    }
-                })
-                .catch(error => {
-                    showConfirmation('error', 'Error de Conexión', 'No se pudo conectar con el servidor', false);
-                    setTimeout(hideConfirmation, 2000);
-                });
-            }
-        }
-
-        function entregarCertificado() {
-            const receptor = prompt('Ingrese el nombre de quien recibe:');
-            if (!receptor) return;
-
-            showConfirmation('loading', 'Procesando...', 'Registrando entrega del certificado');
-            
-            fetch(`/solicitudes/{{ solicitud.id }}/entregar`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ 
-                    receptor_certificado: receptor,
-                    tipo_entrega: 'FISICA'
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showConfirmation('success', '¡Certificado Entregado!', `El certificado ha sido entregado a ${receptor}`, false);
-                    setTimeout(() => location.reload(), 2000);
-                } else {
-                    showConfirmation('error', 'Error', 'Ocurrió un error al registrar la entrega', false);
-                    setTimeout(hideConfirmation, 2000);
-                }
-            })
-            .catch(error => {
-                showConfirmation('error', 'Error de Conexión', 'No se pudo conectar con el servidor', false);
-                setTimeout(hideConfirmation, 2000);
-            });
-        }
-
-        function resubmitir() {
-            if (confirm('¿Ha corregido la documentación? ¿Desea resubmitir la solicitud?')) {
-                fetch(`/solicitudes/{{ solicitud.id }}/resubmitir`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({})
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Solicitud resubmitida exitosamente');
-                        location.reload();
-                    } else {
-                        alert('Error al resubmitir solicitud');
-                    }
-                });
-            }
-            return false;
-        }
-    </script>
-</body>
-</html>
+{% endblock %}

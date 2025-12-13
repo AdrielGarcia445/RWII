@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Sistema de Gestión de Sustancias Controladas{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+<div class="app-shell">
+    {% set current = active_page|default('') %}
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <span class="sidebar-logo">SC</span>
+            <div class="sidebar-title">
+                <span class="system-name">Sustancias Controladas</span>
+                <span class="system-sub">MSP · DNCD · VUS</span>
+            </div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <!-- Panel principal -->
+            <a href="{{ url_for('dashboard') }}"
+               class="nav-item {% if current == 'dashboard' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>Panel principal</span>
+            </a>
+
+            <div class="nav-section-label">Flujos</div>
+
+            <!-- Solicitudes -->
+            <a href="{{ url_for('solicitudes') }}"
+               class="nav-item {% if current == 'solicitudes' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>Solicitudes</span>
+            </a>
+
+            <!-- Certificados -->
+            <a href="{{ url_for('listar_certificados') }}"
+               class="nav-item {% if current == 'certificados' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>Certificados</span>
+            </a>
+
+            <!-- Revisión técnica -->
+            <a href="#"
+               class="nav-item {% if current == 'tecnico' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>Revisión técnica</span>
+            </a>
+
+            <!-- Dirección -->
+            <a href="#"
+               class="nav-item {% if current == 'direccion' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>Dirección</span>
+            </a>
+
+            <!-- DNCD -->
+            <a href="#"
+               class="nav-item {% if current == 'dncd' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>DNCD</span>
+            </a>
+
+            <div class="nav-section-label">Administración</div>
+
+            <!-- Servicios (admin) -->
+            <a href="{{ url_for('admin_servicios') }}"
+               class="nav-item {% if current == 'servicios' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>Servicios</span>
+            </a>
+
+            <!-- Usuarios y roles (admin) -->
+            <a href="{{ url_for('admin_usuarios') }}"
+               class="nav-item {% if current == 'usuarios' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>Usuarios y roles</span>
+            </a>
+
+            <!-- Auditoría (admin) -->
+            <a href="{{ url_for('admin_auditoria') }}"
+               class="nav-item {% if current == 'auditoria' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>Auditoría</span>
+            </a>
+
+            <!-- Configuración (si luego creas la vista, cambia el url_for) -->
+            <a href="#"
+               class="nav-item {% if current == 'config' %}nav-item-active{% endif %}">
+                <span class="nav-dot"></span>
+                <span>Configuración</span>
+            </a>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="env-pill">
+                Entorno: <strong>Desarrollo</strong>
+            </div>
+            <div class="version-pill">
+                v1.0 · RWII
+            </div>
+        </div>
+    </aside>
+
+    <!-- Panel principal -->
+    <div class="main-panel">
+        <!-- Topbar -->
+        <header class="topbar">
+            <div class="topbar-left">
+                {% block breadcrumb %}
+                    <span class="breadcrumb-main">Panel principal</span>
+                {% endblock %}
+            </div>
+
+            <div class="topbar-right">
+                {% if user %}
+                    <div class="user-info">
+                        <div class="user-meta">
+                            <span class="user-email">{{ user.email }}</span>
+                            <span class="user-role">
+                                Rol: {{ user.rol or '—' }}
+                            </span>
+                        </div>
+                        <form method="post" action="{{ url_for('logout') }}">
+                            <button type="submit" class="btn-ghost">Salir</button>
+                        </form>
+                    </div>
+                {% endif %}
+            </div>
+        </header>
+
+        <!-- Contenido -->
+        <main class="content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</div>
+</body>
+</html>

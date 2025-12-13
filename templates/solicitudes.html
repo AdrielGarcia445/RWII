@@ -1,0 +1,150 @@
+{% extends "base_app.html" %}
+
+{% block title %}Solicitudes | Sistema de Gestión de Sustancias Controladas{% endblock %}
+
+{% block breadcrumb %}
+    <span class="breadcrumb-main">Flujos</span>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-sub">Solicitudes</span>
+{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Solicitudes</h1>
+    <p class="page-subtitle">
+        Gestión de solicitudes de sustancias controladas según su rol en el flujo.
+    </p>
+
+    <!-- Barra de filtros (solo visual por ahora) -->
+    <section class="toolbar">
+        <div class="toolbar-left">
+            <div class="field-group">
+                <label class="field-label" for="buscar">Buscar</label>
+                <div class="field-control">
+                    <input id="buscar" type="text" class="input" placeholder="No. expediente o servicio">
+                </div>
+            </div>
+
+            <div class="field-group">
+                <label class="field-label" for="estado">Estado</label>
+                <div class="field-control">
+                    <select id="estado" class="select">
+                        <option value="">Todos</option>
+                        <option value="RECIBIDO">Recibido</option>
+                        <option value="EN_EVALUACION">En evaluación</option>
+                        <option value="ASIGNADO_UPC">Asignado UPC</option>
+                        <option value="APROBADO_UPC">Aprobado UPC</option>
+                        <option value="PENDIENTE_FIRMA_DIRECCION">Pendiente firma Dirección</option>
+                        <option value="ENVIADO_DNCD">Enviado DNCD</option>
+                        <option value="PENDIENTE_FIRMA_DNCD">Pendiente firma DNCD</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="toolbar-right">
+            <a href="{{ url_for('nueva_solicitud') }}" class="btn-primary" style="text-decoration:none;">
+                Nueva solicitud
+            </a>
+        </div>
+    </section>
+
+    <!-- Chips resumen simples -->
+    <section class="chips-row">
+        <div class="chip-stat">
+            <span class="chip-label">Total</span>
+            <span class="chip-value">{{ solicitudes|length }}</span>
+        </div>
+    </section>
+
+    <!-- Tabla -->
+    <section class="card">
+        <header class="card-header">
+            <h2 class="card-title">Listado de solicitudes</h2>
+            <span class="card-badge">Vista general</span>
+        </header>
+        <div class="card-body">
+            <table class="table table-tight">
+                <thead>
+                <tr>
+                    <th>No. expediente</th>
+                    <th>Servicio</th>
+                    <th>Estado</th>
+                    <th>Etapa / Flujo actual</th>
+                    <th>Monto pagado</th>
+                    <th>Fecha creación</th>
+                    <th></th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for s in solicitudes %}
+                    {% set estado = s.estado_codigo or '' %}
+
+                    {# Tipo de badge según estado #}
+                    {% if estado in ['RECIBIDO', 'ENVIADO_DNCD', 'PENDIENTE_FIRMA_DIRECCION', 'PENDIENTE_FIRMA_DNCD'] %}
+                        {% set estado_tipo = 'warning' %}
+                    {% elif estado in ['EN_EVALUACION', 'ASIGNADO_UPC', 'APROBADO_UPC'] %}
+                        {% set estado_tipo = 'info' %}
+                    {% else %}
+                        {% set estado_tipo = 'info' %}
+                    {% endif %}
+
+                    {# Flujo legible según estado #}
+                    {% if estado in ['RECIBIDO'] %}
+                        {% set flujo = 'Ventanilla Única (VUS)' %}
+                    {% elif estado in ['EN_EVALUACION', 'ASIGNADO_UPC', 'APROBADO_UPC'] %}
+                        {% set flujo = 'Unidad de Productos Controlados (UPC)' %}
+                    {% elif estado in ['PENDIENTE_FIRMA_DIRECCION'] %}
+                        {% set flujo = 'Dirección MSP' %}
+                    {% elif estado in ['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD'] %}
+                        {% set flujo = 'DNCD' %}
+                    {% else %}
+                        {% set flujo = '—' %}
+                    {% endif %}
+
+                    <tr>
+                        <td class="mono">
+                            {{ s.numero_expediente }}
+                        </td>
+                        <td>
+                            {# Intentar mostrar el nombre del servicio si existe la relación #}
+                            {% if s.servicio and s.servicio.nombre %}
+                                {{ s.servicio.nombre }}
+                            {% else %}
+                                Servicio {{ s.servicio_id or '—' }}
+                            {% endif %}
+                        </td>
+                        <td>
+                        <span class="status status-{{ estado_tipo }}">
+                            {{ estado }}
+                        </span>
+                        </td>
+                        <td>{{ flujo }}</td>
+                        <td>
+                            {{ (s.monto_pagado or 0) | round(2) }}
+                        </td>
+                        <td class="mono">
+                            {% if s.fecha_creacion %}
+                                {{ s.fecha_creacion.strftime('%Y-%m-%d %H:%M') }}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('ver_solicitud', solicitud_id=s.id) }}"
+                               style="font-size:12px; text-decoration:none; color:#16a34a;">
+                                Ver detalle
+                            </a>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="7" class="empty-row">
+                            No hay solicitudes registradas para su rol.
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endblock %}

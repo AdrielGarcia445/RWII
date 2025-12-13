@@ -1,302 +1,170 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Sistema de Gestión de Sustancias Controladas</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-        }
-        .header {
-            background-color: #2c3e50;
-            color: white;
-            padding: 15px 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .header h1 {
-            font-size: 20px;
-        }
-        .user-info {
-            display: flex;
-            gap: 20px;
-            align-items: center;
-        }
-        .user-name {
-            font-size: 14px;
-        }
-        .logout-btn {
-            background-color: #e74c3c;
-            color: white;
-            padding: 8px 15px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 14px;
-        }
-        .logout-btn:hover {
-            background-color: #c0392b;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 30px auto;
-            padding: 0 20px;
-        }
-        .welcome {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .welcome h2 {
-            color: #2c3e50;
-            margin-bottom: 10px;
-        }
-        .welcome p {
-            color: #7f8c8d;
-        }
-        .actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        .btn {
-            padding: 10px 20px;
-            border-radius: 4px;
-            text-decoration: none;
-            font-size: 14px;
-            cursor: pointer;
-            border: none;
-        }
-        .btn-primary {
-            background-color: #3498db;
-            color: white;
-        }
-        .btn-primary:hover {
-            background-color: #2980b9;
-        }
-        .btn-secondary {
-            background-color: #95a5a6;
-            color: white;
-        }
-        .btn-secondary:hover {
-            background-color: #7f8c8d;
-        }
-        .solicitudes-section {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .section-title {
-            color: #2c3e50;
-            margin-bottom: 20px;
-            font-size: 18px;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
-        }
-        .solicitudes-table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        .solicitudes-table th {
-            background-color: #ecf0f1;
-            padding: 12px;
-            text-align: left;
-            font-weight: bold;
-            color: #2c3e50;
-            border-bottom: 2px solid #bdc3c7;
-        }
-        .solicitudes-table td {
-            padding: 12px;
-            border-bottom: 1px solid #ecf0f1;
-        }
-        .solicitudes-table tr:hover {
-            background-color: #f8f9fa;
-        }
-        .estado-badge {
-            display: inline-block;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 12px;
-            font-weight: bold;
-        }
-        .estado-recibido {
-            background-color: #3498db;
-            color: white;
-        }
-        .estado-devuelto {
-            background-color: #e74c3c;
-            color: white;
-        }
-        .estado-asignado {
-            background-color: #f39c12;
-            color: white;
-        }
-        .estado-evaluacion {
-            background-color: #e67e22;
-            color: white;
-        }
-        .estado-aprobado {
-            background-color: #27ae60;
-            color: white;
-        }
-        .estado-rechazado {
-            background-color: #c0392b;
-            color: white;
-        }
-        .estado-pendiente {
-            background-color: #9b59b6;
-            color: white;
-        }
-        .estado-enviado {
-            background-color: #16a085;
-            color: white;
-        }
-        .estado-entregado {
-            background-color: #2ecc71;
-            color: white;
-        }
-        .action-link {
-            color: #3498db;
-            text-decoration: none;
-        }
-        .action-link:hover {
-            text-decoration: underline;
-        }
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #7f8c8d;
-        }
-        .empty-state p {
-            margin-bottom: 20px;
-        }
-        @media (max-width: 768px) {
-            .solicitudes-table {
-                font-size: 12px;
-            }
-            .solicitudes-table th,
-            .solicitudes-table td {
-                padding: 8px;
-            }
-            .actions {
-                flex-direction: column;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h1>Sistema de Gestión de Sustancias Controladas</h1>
-        <div class="user-info">
-            <span class="user-name">{{ session.name }} ({{ session.rol_codigo }})</span>
-            <a href="/logout" class="logout-btn">Cerrar Sesión</a>
-        </div>
+{% extends "base_app.html" %}
+
+{% block title %}Panel principal | Sistema de Gestión de Sustancias Controladas{% endblock %}
+
+{% block breadcrumb %}
+    <span class="breadcrumb-main">Panel principal</span>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-sub">Resumen general</span>
+{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Panel principal</h1>
+    <p class="page-subtitle">
+        Resumen operativo del sistema de gestión de sustancias controladas.
+    </p>
+
+    {# ================== MÉTRICAS CALCULADAS ================== #}
+    {% set total_solicitudes = solicitudes|length %}
+    {% set pendientes_vus = solicitudes
+        |selectattr('estado_codigo', 'equalto', 'RECIBIDO')
+        |list|length
+            %}
+    {% set en_revision_tecnica = solicitudes
+        |selectattr('estado_codigo', 'in', ['EN_EVALUACION', 'ASIGNADO_UPC'])
+        |list|length
+            %}
+    {% set en_dncd = solicitudes
+        |selectattr('estado_codigo', 'in', ['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD'])
+        |list|length
+            %}
+
+    <div class="grid-metrics">
+        <article class="metric-card">
+            <div class="metric-label">Solicitudes totales</div>
+            <div class="metric-value">{{ total_solicitudes }}</div>
+            <div class="metric-footer">Datos al cargar la página</div>
+        </article>
+
+        <article class="metric-card">
+            <div class="metric-label">Pendientes en VUS</div>
+            <div class="metric-value metric-warn">{{ pendientes_vus }}</div>
+            <div class="metric-footer">En cola de revisión documental</div>
+        </article>
+
+        <article class="metric-card">
+            <div class="metric-label">En revisión técnica</div>
+            <div class="metric-value">{{ en_revision_tecnica }}</div>
+            <div class="metric-footer">Asignadas a analistas UPC</div>
+        </article>
+
+        <article class="metric-card">
+            <div class="metric-label">En DNCD</div>
+            <div class="metric-value">{{ en_dncd }}</div>
+            <div class="metric-footer">Pendientes de visto bueno</div>
+        </article>
     </div>
 
-    <div class="container">
-        <div class="welcome">
-            <h2>Bienvenido, {{ session.name }}</h2>
-            <p>Rol: {{ session.rol_codigo }}</p>
-            
-            {% if session.rol_codigo == 'USUARIO' %}
-            <div class="actions">
-                <a href="/solicitudes/nueva" class="btn btn-primary">Nueva Solicitud</a>
-                <a href="/certificados" class="btn btn-secondary">Mis Certificados</a>
-            </div>
-            {% elif session.rol_codigo == 'ADMIN' %}
-            <div class="actions">
-                <a href="/admin/usuarios" class="btn btn-primary">Gestionar Usuarios</a>
-                <a href="/admin/servicios" class="btn btn-primary">Gestionar Servicios</a>
-                <a href="/admin/auditoria" class="btn btn-secondary">Auditoría</a>
-                <a href="/api/estadisticas" class="btn btn-secondary">Estadísticas</a>
-            </div>
-            {% endif %}
-        </div>
-
-        <div class="solicitudes-section">
-            <h3 class="section-title">
-                {% if session.rol_codigo == 'USUARIO' %}
-                Mis Solicitudes
-                {% elif session.rol_codigo == 'VUS' %}
-                Solicitudes en Ventanilla Única
-                {% elif session.rol_codigo == 'TECNICO_UPC' %}
-                Solicitudes para Evaluación Técnica
-                {% elif session.rol_codigo == 'ENCARGADO_UPC' %}
-                Solicitudes de Unidad de Productos Controlados
-                {% elif session.rol_codigo == 'DIRECCION' %}
-                Solicitudes Pendientes de Firma
-                {% elif session.rol_codigo == 'DNCD' %}
-                Solicitudes DNCD
-                {% else %}
-                Todas las Solicitudes
-                {% endif %}
-            </h3>
-
-            {% if solicitudes %}
-            <table class="solicitudes-table">
-                <thead>
+    <div class="grid-main">
+        <section class="card">
+            <header class="card-header">
+                <h2 class="card-title">Solicitudes recientes</h2>
+                <span class="card-badge">Últimas 10</span>
+            </header>
+            <div class="card-body">
+                <table class="table">
+                    <thead>
                     <tr>
-                        <th>Expediente</th>
-                        <th>Servicio</th>
-                        <th>Estado</th>
-                        <th>Fecha Creación</th>
-                        {% if session.rol_codigo != 'USUARIO' %}
-                        <th>Solicitante</th>
-                        {% endif %}
-                        <th>Acciones</th>
+                        <th>No. solicitud</th>
+                        <th>Empresa</th>
+                        <th>Estado actual</th>
+                        <th>Última acción</th>
                     </tr>
-                </thead>
-                <tbody>
-                    {% for solicitud in solicitudes %}
-                    <tr>
-                        <td>{{ solicitud.numero_expediente }}</td>
-                        <td>{{ solicitud.servicio.nombre }}</td>
-                        <td>
-                            <span class="estado-badge 
-                                {% if solicitud.estado_codigo == 'RECIBIDO' %}estado-recibido
-                                {% elif solicitud.estado_codigo == 'DEVUELTO_VUS' %}estado-devuelto
-                                {% elif solicitud.estado_codigo == 'ASIGNADO_UPC' %}estado-asignado
-                                {% elif solicitud.estado_codigo == 'EN_EVALUACION' %}estado-evaluacion
-                                {% elif solicitud.estado_codigo == 'APROBADO_UPC' %}estado-aprobado
-                                {% elif solicitud.estado_codigo == 'RECHAZADO_UPC' %}estado-rechazado
-                                {% elif 'PENDIENTE' in solicitud.estado_codigo %}estado-pendiente
-                                {% elif 'ENVIADO' in solicitud.estado_codigo %}estado-enviado
-                                {% elif solicitud.estado_codigo == 'APROBADO_FINAL' %}estado-aprobado
-                                {% elif solicitud.estado_codigo == 'ENTREGADO' %}estado-entregado
-                                {% endif %}">
-                                {{ solicitud.estado.descripcion }}
-                            </span>
-                        </td>
-                        <td>{{ solicitud.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</td>
-                        {% if session.rol_codigo != 'USUARIO' %}
-                        <td>{{ solicitud.usuario.name }}</td>
+                    </thead>
+                    <tbody>
+                    {% for s in solicitudes[:10] %}
+                        {# ====== Mapping de estado a etiqueta y estilo ====== #}
+                        {% set estado = s.estado_codigo or '' %}
+
+                        {% if estado == 'RECIBIDO' %}
+                            {% set estado_label = 'En VUS' %}
+                            {% set estado_class = 'status-warning' %}
+                            {% set ultima_accion = 'Recepción de documentos' %}
+                        {% elif estado in ['EN_EVALUACION', 'ASIGNADO_UPC'] %}
+                            {% set estado_label = 'Técnico' %}
+                            {% set estado_class = 'status-info' %}
+                            {% set ultima_accion = 'Evaluación técnica' %}
+                        {% elif estado in ['APROBADO_UPC'] %}
+                            {% set estado_label = 'Aprobada UPC' %}
+                            {% set estado_class = 'status-success' %}
+                            {% set ultima_accion = 'Informe técnico aprobado' %}
+                        {% elif estado in ['PENDIENTE_FIRMA_DIRECCION'] %}
+                            {% set estado_label = 'Dirección' %}
+                            {% set estado_class = 'status-warning' %}
+                            {% set ultima_accion = 'Pendiente firma Dirección' %}
+                        {% elif estado in ['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD'] %}
+                            {% set estado_label = 'DNCD' %}
+                            {% set estado_class = 'status-warning' %}
+                            {% set ultima_accion = 'En revisión DNCD' %}
+                        {% else %}
+                            {% set estado_label = estado %}
+                            {% set estado_class = 'status-info' %}
+                            {% set ultima_accion = '—' %}
                         {% endif %}
-                        <td>
-                            <a href="/solicitudes/{{ solicitud.id }}" class="action-link">Ver Detalles</a>
-                        </td>
-                    </tr>
+
+                        <tr>
+                            <td>{{ s.numero_expediente }}</td>
+                            <td>
+                                {# Ajusta esto según tu modelo real #}
+                                {% if s.empresa_nombre %}
+                                    {{ s.empresa_nombre }}
+                                {% elif s.usuario and s.usuario.nombre %}
+                                    {{ s.usuario.nombre }}
+                                {% elif s.usuario and s.usuario.email %}
+                                    {{ s.usuario.email }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="status {{ estado_class }}">
+                                    {{ estado_label }}
+                                </span>
+                            </td>
+                            <td>{{ ultima_accion }}</td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="4" style="text-align:center; padding:12px;">
+                                No hay solicitudes registradas para mostrar.
+                            </td>
+                        </tr>
                     {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <div class="empty-state">
-                <p>No hay solicitudes para mostrar.</p>
-                {% if session.rol_codigo == 'USUARIO' %}
-                <a href="/solicitudes/nueva" class="btn btn-primary">Crear Primera Solicitud</a>
-                {% endif %}
+                    </tbody>
+                </table>
             </div>
-            {% endif %}
-        </div>
+        </section>
+
+        <section class="card card-secondary">
+            <header class="card-header">
+                <h2 class="card-title">Resumen por rol</h2>
+            </header>
+            <div class="card-body">
+                <ul class="summary-list">
+                    <li>
+                        <div class="summary-label">Ventanilla Única (VUS)</div>
+                        <div class="summary-value">{{ pendientes_vus }} pendientes</div>
+                    </li>
+                    <li>
+                        <div class="summary-label">Técnico</div>
+                        <div class="summary-value">{{ en_revision_tecnica }} en análisis</div>
+                    </li>
+                    <li>
+                        <div class="summary-label">Dirección</div>
+                        <div class="summary-value">
+                            {{
+                                    solicitudes
+                                    |selectattr('estado_codigo', 'equalto', 'PENDIENTE_FIRMA_DIRECCION')
+                                    |list|length
+                                    }} para firma
+                        </div>
+                    </li>
+                    <li>
+                        <div class="summary-label">DNCD</div>
+                        <div class="summary-value">{{ en_dncd }} en revisión</div>
+                    </li>
+                </ul>
+            </div>
+        </section>
     </div>
-</body>
-</html>
+{% endblock %}

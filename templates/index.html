@@ -2,127 +2,226 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema de Gestión de Sustancias Controladas - MSP</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            padding: 20px;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        header {
-            border-bottom: 2px solid #333;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-        }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-        h2 {
-            font-size: 20px;
-            margin: 20px 0 10px;
-        }
-        p {
-            margin-bottom: 10px;
-        }
-        .buttons {
-            margin: 20px 0;
-        }
-        button, a.button {
-            padding: 10px 20px;
-            margin-right: 10px;
-            background: #0066cc;
-            color: white;
-            border: none;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-        }
-        button:hover, a.button:hover {
-            background: #0052a3;
-        }
-        .info-section {
-            margin: 20px 0;
-            padding: 15px;
-            border: 1px solid #ddd;
-        }
-        ul {
-            margin-left: 20px;
-            margin-top: 10px;
-        }
-        li {
-            margin: 5px 0;
-        }
-        footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-            text-align: center;
-            font-size: 14px;
-        }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
 </head>
 <body>
-    <header>
-        <h1>Sistema de Gestión de Sustancias Controladas</h1>
-        <p>Ministerio de Salud Pública y Asistencia Social - DNCD</p>
-    </header>
+<div class="public-shell">
+    <div class="public-page">
 
-    <main>
-        <div class="buttons">
-            <a href="/login" class="button">Iniciar Sesión</a>
-            <a href="/register" class="button">Registrarse</a>
-        </div>
+        <!-- HERO SUPERIOR -->
+        <header class="public-hero">
+            <div class="public-hero-top">
+                <div class="public-hero-identidad">
+                    <div class="public-hero-logo">SC</div>
+                    <div class="public-hero-texts">
+                        <h1 class="public-hero-title">Sistema de Gestión de Sustancias Controladas</h1>
+                        <p class="public-hero-subtitle">
+                            Plataforma electrónica para certificación y control del manejo de sustancias controladas.
+                        </p>
+                        <p class="public-hero-org">
+                            Ministerio de Salud Pública · DNCD · Ventanilla Única de Servicios
+                        </p>
+                    </div>
+                </div>
 
-        <div class="info-section">
-            <h2>Bienvenido al Sistema de Certificación</h2>
-            <p>Este sistema permite gestionar de forma electrónica las solicitudes de certificados y permisos para el manejo de sustancias controladas.</p>
-        </div>
+                <div class="public-hero-buttons">
+                    <a href="/login" class="btn-primary">
+                        <span>🔐</span>
+                        <span>Iniciar sesión</span>
+                    </a>
+                    <a href="/register" class="btn-outline-light">
+                        <span>➕</span>
+                        <span>Registrarse</span>
+                    </a>
+                </div>
+            </div>
 
-        <div class="info-section">
-            <h2>Servicios Disponibles</h2>
-            <ul>
-                <li>Certificado de Inscripción de Drogas Controladas Clase A</li>
-                <li>Certificado de Inscripción Clase B - Establecimientos Privados</li>
-                <li>Certificado de Inscripción Clase B - Hospitales Públicos</li>
-                <li>Permiso de Importación de Materia Prima</li>
-                <li>Permiso de Importación de Medicamentos</li>
-            </ul>
-        </div>
+            <div class="public-hero-bottom">
+                <div class="public-pill">
+                    <span class="public-pill-dot"></span>
+                    <span class="public-pill-label">Plataforma activa</span>
+                    <span>Recepción 24/7 de solicitudes electrónicas</span>
+                </div>
+                <span>
+                    Certificación, permisos y trazabilidad para establecimientos autorizados en la República Dominicana.
+                </span>
+            </div>
+        </header>
 
-        <div class="info-section">
-            <h2>Proceso de Solicitud</h2>
-            <ol>
-                <li>Registrarse en el sistema</li>
-                <li>Completar formulario de solicitud</li>
-                <li>Adjuntar documentos requeridos</li>
-                <li>Realizar pago (si aplica)</li>
-                <li>Seguimiento del estado de su solicitud</li>
-                <li>Retiro de certificado en Ventanilla Única</li>
-            </ol>
-        </div>
+        <!-- CUERPO PRINCIPAL -->
+        <main class="public-layout">
 
-        <div class="info-section">
-            <h2>Verificar Certificado</h2>
-            <p>Para verificar la autenticidad de un certificado, ingrese el número de certificado:</p>
-            <form action="/certificados/verificar" method="get" style="margin-top: 10px;">
-                <input type="text" name="numero" placeholder="Número de certificado" style="padding: 8px; width: 300px;">
-                <button type="submit">Verificar</button>
-            </form>
-        </div>
-    </main>
+            <!-- Columna izquierda -->
+            <section class="public-card">
+                <div class="public-card-header">
+                    <div>
+                        <h2 class="public-card-title">Bienvenido al sistema de certificación</h2>
+                        <p class="public-card-subtitle">
+                            Gestione en línea sus solicitudes de certificados y permisos vinculados a sustancias controladas.
+                        </p>
+                    </div>
+                    <div class="public-card-badge">
+                        Trámite electrónico
+                    </div>
+                </div>
 
-    <footer>
-        <p>&copy; 2025 Ministerio de Salud Pública - República Dominicana</p>
-        <p>Sistema desarrollado para la gestión de sustancias controladas</p>
-    </footer>
+                <div class="public-card-body">
+                    <p>
+                        A través de esta plataforma puede registrar solicitudes, adjuntar documentación de soporte,
+                        dar seguimiento al estado de cada trámite y descargar los certificados emitidos por el
+                        Ministerio de Salud Pública.
+                    </p>
+
+                    <ul class="public-list">
+                        <li class="public-list-item">
+                            <span class="public-list-bullet">1</span>
+                            <span>Registro único de establecimientos y responsables autorizados.</span>
+                        </li>
+                        <li class="public-list-item">
+                            <span class="public-list-bullet">2</span>
+                            <span>Flujo coordinado entre Ventanilla Única, unidades técnicas, Dirección y DNCD.</span>
+                        </li>
+                        <li class="public-list-item">
+                            <span class="public-list-bullet">3</span>
+                            <span>Historial y trazabilidad completa de solicitudes y certificados emitidos.</span>
+                        </li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- Columna derecha -->
+            <section>
+                <div class="public-card" style="margin-bottom: 10px;">
+                    <div class="public-card-header">
+                        <div>
+                            <h2 class="public-card-title">Servicios disponibles</h2>
+                            <p class="public-card-subtitle">Principales tipos de certificados y permisos gestionados.</p>
+                        </div>
+                    </div>
+                    <div class="public-card-body">
+                        <ul class="public-service-list">
+                            <li class="public-service-item">
+                                <span class="public-service-dot"></span>
+                                Certificado de Inscripción de Drogas Controladas Clase A
+                            </li>
+                            <li class="public-service-item">
+                                <span class="public-service-dot"></span>
+                                Certificado de Inscripción Clase B – Establecimientos privados
+                            </li>
+                            <li class="public-service-item">
+                                <span class="public-service-dot"></span>
+                                Certificado de Inscripción Clase B – Hospitales públicos
+                            </li>
+                            <li class="public-service-item">
+                                <span class="public-service-dot"></span>
+                                Permiso de importación de materia prima
+                            </li>
+                            <li class="public-service-item">
+                                <span class="public-service-dot"></span>
+                                Permiso de importación de medicamentos
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="public-card">
+                    <div class="public-card-header">
+                        <div>
+                            <h2 class="public-card-title">Cómo funciona el proceso</h2>
+                            <p class="public-card-subtitle">Flujo básico para la gestión de sus solicitudes.</p>
+                        </div>
+                    </div>
+                    <div class="public-card-body">
+                        <ul class="public-step-list">
+                            <li class="public-step-item">
+                                <span class="public-step-index">1</span>
+                                <span>Regístrese en la plataforma e inicie sesión.</span>
+                            </li>
+                            <li class="public-step-item">
+                                <span class="public-step-index">2</span>
+                                <span>Seleccione el servicio y complete el formulario de solicitud.</span>
+                            </li>
+                            <li class="public-step-item">
+                                <span class="public-step-index">3</span>
+                                <span>Adjunte la documentación requerida en formato digital.</span>
+                            </li>
+                            <li class="public-step-item">
+                                <span class="public-step-index">4</span>
+                                <span>Registre el pago correspondiente (si aplica) y su referencia.</span>
+                            </li>
+                            <li class="public-step-item">
+                                <span class="public-step-index">5</span>
+                                <span>Monitoree el estado de su trámite desde el panel de seguimiento.</span>
+                            </li>
+                            <li class="public-step-item">
+                                <span class="public-step-index">6</span>
+                                <span>Retire el certificado en Ventanilla Única o siga las instrucciones de entrega.</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- BLOQUE DE VERIFICACIÓN -->
+        <section class="public-verify">
+            <div class="public-verify-main">
+                <div class="public-card-header" style="margin-bottom: 4px;">
+                    <div>
+                        <h2 class="public-card-title">Verificar certificado</h2>
+                        <p class="public-card-subtitle">
+                            Confirme la autenticidad de un certificado emitido por el sistema.
+                        </p>
+                    </div>
+                </div>
+                <div class="public-card-body">
+                    <p class="public-verify-text">
+                        Ingrese el número de certificado para verificar su vigencia y los datos básicos asociados.
+                    </p>
+                    <form class="public-verify-form" action="/certificados/verificar" method="get">
+                        <input
+                                type="text"
+                                name="numero"
+                                class="input public-input"
+                                placeholder="Ej.: SC-2025-000123"
+                                required
+                        >
+                        <button type="submit" class="btn-primary">
+                            <span>🔎</span>
+                            <span>Verificar certificado</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <aside class="public-verify-side">
+                <div class="public-verify-side-title">Información rápida</div>
+                <p>
+                    La verificación en línea permite validar que un certificado fue emitido por el Ministerio de Salud
+                    Pública y conocer su estado (activo, vencido).
+                </p>
+
+                <div class="public-verify-side-row">
+                    <span class="public-verify-side-label">Cobertura</span>
+                    <span class="public-verify-side-value">Nacional</span>
+                </div>
+                <div class="public-verify-side-row">
+                    <span class="public-verify-side-label">Actualización</span>
+                    <span class="public-verify-side-value">En tiempo real</span>
+                </div>
+            </aside>
+        </section>
+
+        <!-- FOOTER -->
+        <footer class="public-footer">
+            <p>&copy; 2025 Ministerio de Salud Pública – República Dominicana</p>
+            <p>Sistema para la gestión y certificación del manejo de sustancias controladas.</p>
+        </footer>
+
+    </div>
+</div>
 </body>
 </html>
