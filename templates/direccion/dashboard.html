@@ -1,0 +1,112 @@
+{% extends "base_app.html" %}
+{% set active_page = 'direccion' %}
+
+{% block title %}Dirección · Pendientes de Firma{% endblock %}
+
+{% block breadcrumb %}
+    <span class="breadcrumb-main">Dirección</span>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-sub">Solicitudes pendientes de firma</span>
+{% endblock %}
+
+{% block content %}
+    <h1 class="page-title">Panel de Dirección</h1>
+    <p class="page-subtitle">
+        Revisión y firma de solicitudes aprobadas por la Unidad de Productos Controlados.
+    </p>
+
+    <!-- Métricas principales -->
+    <div class="grid-metrics">
+        <article class="metric-card">
+            <div class="metric-label">Pendientes de firma</div>
+            <div class="metric-value">{{ pendientes_firma }}</div>
+            <div class="metric-footer">Aprobadas por UPC</div>
+        </article>
+
+        <article class="metric-card">
+            <div class="metric-label">Firmadas hoy</div>
+            <div class="metric-value metric-success">{{ firmadas_hoy }}</div>
+            <div class="metric-footer">Certificados firmados en el día</div>
+        </article>
+
+        <article class="metric-card">
+            <div class="metric-label">Enviadas a DNCD</div>
+            <div class="metric-value">{{ enviadas_dncd }}</div>
+            <div class="metric-footer">Pendientes de firma DNCD</div>
+        </article>
+
+        <article class="metric-card">
+            <div class="metric-label">Completadas este mes</div>
+            <div class="metric-value">{{ completadas_mes }}</div>
+            <div class="metric-footer">Certificados emitidos</div>
+        </article>
+    </div>
+
+    <!-- Lista de solicitudes -->
+    <section class="card">
+        <header class="card-header">
+            <h2 class="card-title">Solicitudes pendientes de firma</h2>
+            <span class="card-badge">Aprobadas por Evaluación Técnica</span>
+        </header>
+
+        <div class="card-body">
+            {% if solicitudes %}
+                <table class="table table-tight">
+                    <thead>
+                    <tr>
+                        <th>No. expediente</th>
+                        <th>Solicitante</th>
+                        <th>Servicio</th>
+                        <th>Estado</th>
+                        <th>Fecha aprobación UPC</th>
+                        <th>Acciones</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {% for sol in solicitudes %}
+                        <tr>
+                            <td class="mono">
+                                <strong>{{ sol.numero_expediente }}</strong>
+                            </td>
+                            <td>{{ sol.usuario.name }}</td>
+                            <td>{{ sol.servicio.nombre }}</td>
+                            <td>
+                                {% if sol.estado_codigo == 'APROBADO_UPC' %}
+                                    <span class="pill pill-success">
+                                        Aprobado UPC
+                                    </span>
+                                {% elif sol.estado_codigo == 'PENDIENTE_FIRMA_DIRECCION' %}
+                                    <span class="pill pill-warning">
+                                        Pendiente Firma
+                                    </span>
+                                {% else %}
+                                    <span class="pill pill-neutral">
+                                        {{ sol.estado.descripcion }}
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ sol.fecha_actualizacion.strftime('%d/%m/%Y %H:%M') }}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('direccion_revisar_solicitud', solicitud_id=sol.id) }}"
+                                   class="btn-primary"
+                                   style="text-decoration:none; font-size:11px;">
+                                    <i class="fas fa-signature"></i> Revisar y Firmar
+                                </a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <div class="empty-row">
+                    <i class="fas fa-check-circle" style="color: #22c55e; font-size: 24px;"></i>
+                    <p style="margin: 8px 0 0; color: #6b7280;">
+                        No hay solicitudes pendientes de firma en este momento.
+                    </p>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+{% endblock %}

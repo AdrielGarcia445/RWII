@@ -1,0 +1,616 @@
+{% extends "base_app.html" %}
+{% set active_page = 'dncd' %}
+
+{% block title %}Firma DNCD · {{ solicitud.numero_expediente }}{% endblock %}
+
+{% block breadcrumb %}
+    <span class="breadcrumb-main">DNCD</span>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-sub">Aprobación final {{ solicitud.numero_expediente }}</span>
+{% endblock %}
+
+{% block content %}
+    <style>
+        .form-wrapper {
+            max-width: 980px;
+            margin: 0 auto;
+        }
+
+        .header-with-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .header-with-actions .page-title {
+            margin-bottom: .25rem;
+        }
+
+        .page-subtitle {
+            margin: 0;
+            color: #4a5568;
+            font-size: .95rem;
+        }
+
+        .form-card {
+            border-radius: 1.2rem;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+
+        .card-body {
+            padding: 1.5rem 1.75rem;
+        }
+
+        .card-footer.form-footer {
+            padding: 1.1rem 1.75rem 1.4rem;
+            background: #f8fafc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .form-section {
+            margin-bottom: 1.75rem;
+        }
+
+        .form-section:last-of-type {
+            margin-bottom: .75rem;
+        }
+
+        .section-title {
+            font-size: 1.05rem;
+            margin-bottom: .25rem;
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+        }
+
+        .section-title::before {
+            content: "";
+            width: 6px;
+            height: 18px;
+            border-radius: 999px;
+            background: linear-gradient(180deg, #667eea, #764ba2);
+        }
+
+        .section-description {
+            font-size: .85rem;
+            color: #64748b;
+            margin-bottom: 1rem;
+        }
+
+        .section-divider {
+            border: none;
+            border-top: 1px dashed #e2e8f0;
+            margin: 1.25rem 0 1.5rem;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem 1.5rem;
+        }
+
+        .detail-item {
+            padding: .75rem .9rem;
+            border-radius: .7rem;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+        }
+
+        .detail-label {
+            font-size: .78rem;
+            color: #6b7280;
+            margin-bottom: .2rem;
+            display: block;
+        }
+
+        .detail-value {
+            font-size: .9rem;
+            color: #111827;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            display: inline-flex;
+            align-items: center;
+            padding: .25rem .7rem;
+            border-radius: 999px;
+            font-size: .78rem;
+            background: #ecfdf5;
+            color: #166534;
+            border: 1px solid #86efac;
+            gap: .3rem;
+        }
+
+        .badge-info {
+            display: inline-flex;
+            align-items: center;
+            padding: .25rem .7rem;
+            border-radius: 999px;
+            font-size: .78rem;
+            background: #dbeafe;
+            color: #1e40af;
+            border: 1px solid #93c5fd;
+            gap: .3rem;
+        }
+
+        .badge-secondary {
+            display: inline-flex;
+            align-items: center;
+            padding: .25rem .7rem;
+            border-radius: 999px;
+            font-size: .78rem;
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #cbd5e1;
+            gap: .3rem;
+        }
+
+        .evaluacion-box {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border: 1px solid #86efac;
+            border-radius: .8rem;
+            padding: 1rem 1.25rem;
+        }
+
+        .evaluacion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: .7rem;
+        }
+
+        .evaluacion-titulo {
+            font-weight: 600;
+            color: #166534;
+            font-size: .9rem;
+        }
+
+        .evaluacion-fecha {
+            font-size: .78rem;
+            color: #15803d;
+        }
+
+        .evaluacion-tecnico {
+            font-size: .82rem;
+            color: #166534;
+            margin-bottom: .6rem;
+        }
+
+        .evaluacion-observaciones {
+            font-size: .82rem;
+            color: #166534;
+            background: #ffffff;
+            padding: .7rem;
+            border-radius: .6rem;
+            border: 1px solid #bbf7d0;
+        }
+
+        .certificado-box {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            border: 1px solid #93c5fd;
+            border-radius: .8rem;
+            padding: 1rem 1.25rem;
+        }
+
+        .certificado-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: .7rem;
+        }
+
+        .certificado-titulo {
+            font-weight: 600;
+            color: #1e40af;
+            font-size: .9rem;
+        }
+
+        .certificado-info {
+            font-size: .82rem;
+            color: #1e3a8a;
+            margin-bottom: .4rem;
+        }
+
+        .documentos-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .documentos-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: .6rem 0;
+            border-bottom: 1px dashed #e5e7eb;
+            font-size: .82rem;
+        }
+
+        .documentos-list li:last-child {
+            border-bottom: none;
+        }
+
+        .firma-info {
+            background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%);
+            border: 1px solid #c4b5fd;
+            border-radius: .8rem;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .firma-info-title {
+            font-weight: 600;
+            color: #6b21a8;
+            font-size: .9rem;
+            margin-bottom: .5rem;
+        }
+
+        .firma-info-text {
+            font-size: .82rem;
+            color: #7c3aed;
+        }
+
+        .form-control {
+            border-radius: .7rem;
+            border: 1px solid #cbd5e1;
+            padding: .55rem .75rem;
+            font-size: .9rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        textarea.form-control {
+            min-height: 100px;
+            resize: vertical;
+            line-height: 1.4;
+        }
+
+        .form-label {
+            font-size: .85rem;
+            font-weight: 600;
+            color: #1f2933;
+            margin-bottom: .25rem;
+            display: block;
+        }
+
+        .form-check {
+            display: flex;
+            align-items: center;
+            gap: .5rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-check-input {
+            width: 18px;
+            height: 18px;
+            border-radius: .3rem;
+            border: 1px solid #cbd5e1;
+            cursor: pointer;
+        }
+
+        .form-check-label {
+            font-size: .85rem;
+            color: #374151;
+            cursor: pointer;
+        }
+
+        .btn-firmar {
+            background: linear-gradient(135deg, #7c3aed 0%, #6b21a8 100%);
+            color: white;
+            border: none;
+            padding: .6rem 1.5rem;
+            border-radius: .7rem;
+            font-size: .9rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+        }
+
+        .btn-firmar:hover {
+            background: linear-gradient(135deg, #6b21a8 0%, #581c87 100%);
+        }
+
+        .btn-rechazar {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+            padding: .6rem 1.5rem;
+            border-radius: .7rem;
+            font-size: .9rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .btn-rechazar:hover {
+            background: #fee2e2;
+        }
+
+        .alert-warning {
+            background: #fffbeb;
+            border: 1px solid #fed7aa;
+            color: #92400e;
+            padding: .7rem .9rem;
+            border-radius: .7rem;
+            font-size: .82rem;
+        }
+
+        @media (max-width: 900px) {
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+            .header-with-actions {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+
+    <div class="form-wrapper">
+        <div class="header-with-actions">
+            <div>
+                <h1 class="page-title">Aprobación Final DNCD</h1>
+                <p class="page-subtitle">
+                    Revise toda la documentación y proceda con la aprobación final.
+                </p>
+            </div>
+            <div class="header-actions">
+                <a href="{{ url_for('dncd_dashboard') }}" class="btn btn-secondary">Volver al panel</a>
+            </div>
+        </div>
+
+        <div class="card form-card">
+            <div class="card-body">
+                {# =================== INFORMACIÓN DEL SOLICITANTE =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Información del Solicitante</h2>
+                    <p class="section-description">
+                        Expediente: <strong>{{ solicitud.numero_expediente }}</strong>
+                    </p>
+
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Nombre / Razón Social</span>
+                            <span class="detail-value">{{ solicitud.usuario.razon_social or solicitud.usuario.name }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Tipo de Usuario</span>
+                            <span class="detail-value">
+                                <span class="badge-secondary">{{ solicitud.usuario.tipo_usuario }}</span>
+                            </span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Correo</span>
+                            <span class="detail-value">{{ solicitud.usuario.email }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Teléfono</span>
+                            <span class="detail-value">{{ solicitud.usuario.telefono or 'No especificado' }}</span>
+                        </div>
+                    </div>
+                </section>
+
+                <hr class="section-divider"/>
+
+                {# =================== SERVICIO SOLICITADO =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Servicio Solicitado</h2>
+                    <p class="section-description">
+                        Detalles del servicio y estado actual de la solicitud.
+                    </p>
+
+                    <div class="detail-grid">
+                        <div class="detail-item" style="grid-column: 1 / -1;">
+                            <span class="detail-label">Servicio</span>
+                            <span class="detail-value">{{ solicitud.servicio.nombre }}</span>
+                            <div style="font-size: .75rem; color: #6b7280; margin-top: .2rem;">
+                                Código: {{ solicitud.servicio.codigo }}
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Fecha de solicitud</span>
+                            <span class="detail-value">{{ solicitud.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Estado actual</span>
+                            <span class="detail-value">
+                                <span class="badge-info">
+                                    <i class="fas fa-info-circle"></i>
+                                    {{ solicitud.estado.descripcion }}
+                                </span>
+                            </span>
+                        </div>
+                    </div>
+                </section>
+
+                <hr class="section-divider"/>
+
+                {# =================== EVALUACIÓN TÉCNICA UPC =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Evaluación Técnica UPC</h2>
+                    <p class="section-description">
+                        Resultado de la evaluación técnica realizada por la Unidad de Productos Controlados.
+                    </p>
+
+                    {% if evaluacion %}
+                        <div class="evaluacion-box">
+                            <div class="evaluacion-header">
+                                <span class="evaluacion-titulo">
+                                    <i class="fas fa-check-circle"></i> Resultado: Aprobado
+                                </span>
+                                <span class="evaluacion-fecha">
+                                    {{ evaluacion.fecha.strftime('%d/%m/%Y %H:%M') }}
+                                </span>
+                            </div>
+                            <div class="evaluacion-tecnico">
+                                <i class="fas fa-user"></i> Técnico: 
+                                {% if evaluacion.tecnico %}
+                                {{ evaluacion.tecnico.name }}
+                                {% else %}
+                                No especificado
+                                {% endif %}
+                            </div>
+                            {% if evaluacion.observaciones %}
+                                <div class="evaluacion-observaciones">
+                                    <strong>Observaciones del técnico:</strong><br>
+                                    {{ evaluacion.observaciones }}
+                                </div>
+                            {% endif %}
+                            {% if evaluacion.checklist %}
+                                <div style="margin-top: .7rem;">
+                                    <strong style="font-size: .8rem; color: #166534;">Checklist verificado:</strong>
+                                    <ul style="margin: .4rem 0 0 1.2rem; font-size: .78rem; color: #15803d;">
+                                        {% for item, cumple in evaluacion.checklist.items() %}
+                                            <li>
+                                                {% if cumple %}
+                                                    <i class="fas fa-check" style="color:#22c55e;"></i>
+                                                {% else %}
+                                                    <i class="fas fa-times" style="color:#ef4444;"></i>
+                                                {% endif %}
+                                                {{ item | replace('_', ' ') | title }}
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            No se encontró información de la evaluación técnica.
+                        </div>
+                    {% endif %}
+                </section>
+
+                <hr class="section-divider"/>
+
+                {# =================== FIRMA DE DIRECCIÓN =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Firma de Dirección MSP</h2>
+                    <p class="section-description">
+                        Certificado firmado por la Dirección del Ministerio de Salud Pública.
+                    </p>
+
+                    {% if certificado %}
+                        <div class="certificado-box">
+                            <div class="certificado-header">
+                                <span class="certificado-titulo">
+                                    <i class="fas fa-shield-check"></i> Certificado Firmado
+                                </span>
+                            </div>
+                            <div class="certificado-info">
+                                <i class="fas fa-certificate"></i> Número: <strong>{{ certificado.numero_certificado }}</strong>
+                            </div>
+                            <div class="certificado-info">
+                                <i class="fas fa-calendar"></i> Fecha de emisión: {{ certificado.fecha_emision.strftime('%d/%m/%Y %H:%M') }}
+                            </div>
+                            {% if certificado.firmante_direccion %}
+                            <div class="certificado-info">
+                                <i class="fas fa-user-check"></i> Firmante: {{ certificado.firmante_direccion.name }}
+                            </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            No hay certificado generado por Dirección.
+                        </div>
+                    {% endif %}
+                </section>
+
+                <hr class="section-divider"/>
+
+                {# =================== DOCUMENTOS ADJUNTOS =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Documentos Adjuntos</h2>
+                    <p class="section-description">
+                        Documentos de soporte proporcionados por el solicitante ({{ documentos | length }} archivo(s)).
+                    </p>
+
+                    {% if documentos %}
+                        <ul class="documentos-list">
+                            {% for doc in documentos %}
+                                <li>
+                                    <span>
+                                        <i class="fas fa-file-pdf" style="color:#dc2626;"></i>
+                                        {{ doc.nombre_original }}
+                                        <span class="badge-secondary" style="margin-left: .5rem;">{{ doc.tipo }}</span>
+                                    </span>
+                                    <a href="{{ url_for('descargar_documento', documento_id=doc.id) }}"
+                                       class="btn-link" style="font-size:.78rem;">
+                                        <i class="fas fa-download"></i> Descargar
+                                    </a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p style="color: #6b7280; font-size: .82rem;">
+                            No hay documentos adjuntos.
+                        </p>
+                    {% endif %}
+                </section>
+
+                <hr class="section-divider"/>
+
+                {# =================== FIRMA DNCD =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Aprobación Final DNCD</h2>
+                    <p class="section-description">
+                        Proceda con la aprobación final en nombre de la Dirección Nacional de Control de Drogas.
+                    </p>
+
+                    <div class="firma-info">
+                        <div class="firma-info-title">
+                            <i class="fas fa-info-circle"></i> Información de aprobación
+                        </div>
+                        <div class="firma-info-text">
+                            Al firmar esta solicitud, el certificado será marcado como <strong>APROBADO FINAL</strong> 
+                            y será enviado a <strong>Ventanilla Única (VUS)</strong> para su entrega al solicitante.
+                        </div>
+                    </div>
+
+                    <form id="formFirma" method="POST" action="{{ url_for('firmar_dncd', solicitud_id=solicitud.id) }}">
+                        <div style="margin-bottom: 1rem;">
+                            <label class="form-label">Observaciones DNCD (opcional)</label>
+                            <textarea name="observaciones_dncd" class="form-control"
+                                      placeholder="Agregue cualquier observación relevante..."></textarea>
+                        </div>
+
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="confirmar_revision" required>
+                            <label class="form-check-label" for="confirmar_revision">
+                                Confirmo que he revisado toda la documentación y apruebo esta solicitud en nombre de DNCD
+                            </label>
+                        </div>
+                    </form>
+
+                    <!-- Formulario oculto para rechazo -->
+                    <form id="form-rechazar" method="POST" action="{{ url_for('dncd_rechazar', solicitud_id=solicitud.id) }}" style="display: none;">
+                        <input type="hidden" name="motivo_rechazo" value="Rechazado por DNCD">
+                    </form>
+                </section>
+            </div>
+
+            <footer class="card-footer form-footer">
+                <a href="{{ url_for('dncd_dashboard') }}" class="btn btn-secondary">Cancelar</a>
+                <div style="display: flex; gap: .6rem;">
+                    <button type="button" class="btn-rechazar" 
+                            onclick="if(confirm('¿Está seguro de rechazar esta solicitud?')) { document.getElementById('form-rechazar').submit(); }">
+                        <i class="fas fa-times-circle"></i> Rechazar
+                    </button>
+                    <button type="submit" form="formFirma" class="btn-firmar">
+                        <i class="fas fa-check-circle"></i> Firmar y Aprobar
+                    </button>
+                </div>
+            </footer>
+        </div>
+    </div>
+{% endblock %}

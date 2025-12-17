@@ -19,7 +19,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = (
-    "postgresql://postgres:1JesusEstevez!@db.iyhohfaitpzprhqybfzz.supabase.co:5432/postgres"
+    "postgresql://postgres.eticqhvvggccomubtgdf:intec1234567890@aws-1-us-east-2.pooler.supabase.com:6543/postgres"
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -30,16 +30,24 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 db = SQLAlchemy(app)
 
 # Configuración de Supabase Storage
-SUPABASE_URL = "https://iyhohfaitpzprhqybfzz.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5aG9oZmFpdHB6cHJocXliZnp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU0MjE5MjIsImV4cCI6MjA4MDk5NzkyMn0.4anGTblXF3f3iOJrKSFH5ITsiPbLPlwj6mbML7Qsvf4"
+SUPABASE_URL = "https://eticqhvvggccomubtgdf.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0aWNxaHZ2Z2djY29tdWJ0Z2RmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ0MzIyNjgsImV4cCI6MjA4MDAwODI2OH0.g4rxHMQbE_it0cZNxgdBhXvpAdsQ56v43fap7dTayDw"
+# Service role key para operaciones del servidor (tiene permisos completos, bypass RLS)
+SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0aWNxaHZ2Z2djY29tdWJ0Z2RmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDQzMjI2OCwiZXhwIjoyMDgwMDA4MjY4fQ.MbaxV6qYjIr_HHFP0eVW80GrizXijNuuddw_-BWOyNg"
+
+# Cliente para operaciones públicas (con RLS)
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Cliente para operaciones administrativas del servidor (bypass RLS)
+supabase_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
 STORAGE_BUCKET = "documentos"
 
 def inicializar_bucket_storage():
     """Crear bucket de Supabase Storage si no existe"""
     try:
-        # Intentar listar buckets existentes
-        buckets_response = supabase.storage.list_buckets()
+        # Intentar listar buckets existentes usando cliente admin
+        buckets_response = supabase_admin.storage.list_buckets()
         
         # Verificar si el bucket ya existe
         bucket_exists = False
@@ -147,6 +155,7 @@ class Solicitud(db.Model):
     servicio = db.relationship('CatalogoServicio', backref='solicitudes')
     estado = db.relationship('EstadoSolicitud', backref='solicitudes')
     asignado_a = db.relationship('Usuario', foreign_keys=[asignado_a_id])
+    certificado = db.relationship('Certificado', foreign_keys=[certificado_id], post_update=True)
 
 class Certificado(db.Model):
     __tablename__ = 'certificados'
@@ -164,6 +173,9 @@ class Certificado(db.Model):
     firma_digital_dncd = db.Column(db.Text)
     fecha_firma_dncd = db.Column(db.DateTime)
     estado = db.Column(db.String, nullable=False)
+    
+    firmante_direccion = db.relationship('Usuario', foreign_keys=[firmante_direccion_id])
+    firmante_dncd = db.relationship('Usuario', foreign_keys=[firmante_dncd_id])
 
 class Documento(db.Model):
     __tablename__ = 'documentos'
@@ -866,6 +878,7 @@ def register():
 def dashboard():
     rol = session.get('rol_codigo')
     user_id = session.get('user_id')
+    user = Usuario.query.get(user_id) if user_id else None
 
     # Por defecto: todas las solicitudes
     query = Solicitud.query
@@ -876,9 +889,8 @@ def dashboard():
         # Redirigir a dashboard especializado de VUS
         return redirect(url_for('vus_dashboard'))
     elif rol == 'TECNICO_UPC':
-        query = query.filter(
-            Solicitud.estado_codigo.in_(['EN_EVALUACION', 'ASIGNADO_UPC'])
-        )
+        # Redirigir a dashboard especializado de Técnico UPC
+        return redirect(url_for('tecnico_dashboard'))
     elif rol == 'ENCARGADO_UPC':
         # El encargado ve todas las solicitudes de UPC (asignadas, en evaluación y aprobadas)
         query = query.filter(
@@ -898,6 +910,7 @@ def dashboard():
     return render_template(
         'dashboard.html',
         solicitudes=solicitudes,
+        user=user,
         active_page='dashboard'
     )
 
@@ -1109,6 +1122,10 @@ def vus_dashboard():
     """Dashboard especializado para Ventanilla Única"""
     estado_filtro = request.args.get('estado')
     
+    # Obtener usuario actual
+    user_id = session.get('user_id')
+    user = Usuario.query.get(user_id) if user_id else None
+    
     # Solicitudes que VUS debe revisar (incluye certificados listos para entrega)
     query = Solicitud.query.filter(
         Solicitud.estado_codigo.in_(['RECIBIDO', 'DEVUELTO_VUS', 'APROBADO_FINAL'])
@@ -1138,7 +1155,9 @@ def vus_dashboard():
                          pendientes=pendientes,
                          devueltas=devueltas,
                          aprobadas_hoy=aprobadas_hoy,
-                         para_entrega=para_entrega)
+                         para_entrega=para_entrega,
+                         user=user,
+                         estado_actual=estado_filtro)
 
 def obtener_requisitos_por_servicio(codigo_servicio):
     """Retorna los requisitos específicos según el tipo de servicio"""
@@ -1396,6 +1415,85 @@ def evaluar_vus(solicitud_id):
 # RUTAS DE EVALUACIÓN TÉCNICA (UPC)
 # ============================================================================
 
+@app.route('/tecnico/dashboard')
+@login_required
+@role_required('TECNICO_UPC', 'ENCARGADO_UPC')
+def tecnico_dashboard():
+    """Dashboard especializado para Técnicos UPC"""
+    estado_filtro = request.args.get('estado')
+    user_id = session.get('user_id')
+    user = Usuario.query.get(user_id) if user_id else None
+    
+    # Solicitudes que el técnico puede evaluar
+    query = Solicitud.query.filter(
+        Solicitud.estado_codigo.in_(['ASIGNADO_UPC', 'EN_EVALUACION', 'APROBADO_UPC'])
+    )
+    
+    # Aplicar filtros
+    if estado_filtro == 'MIS_ASIGNADAS':
+        query = query.filter_by(asignado_a_id=user_id)
+    elif estado_filtro:
+        query = query.filter_by(estado_codigo=estado_filtro)
+    
+    solicitudes = query.order_by(Solicitud.fecha_creacion.desc()).all()
+    
+    # Estadísticas
+    mis_asignadas = Solicitud.query.filter_by(
+        asignado_a_id=user_id,
+        estado_codigo='ASIGNADO_UPC'
+    ).count()
+    
+    en_evaluacion = Solicitud.query.filter_by(estado_codigo='EN_EVALUACION').count()
+    
+    # Aprobadas hoy por este técnico
+    from datetime import date
+    aprobadas_hoy = EvaluacionTecnicaUPC.query.filter(
+        EvaluacionTecnicaUPC.tecnico_id == user_id,
+        EvaluacionTecnicaUPC.aprobado == True,
+        db.func.date(EvaluacionTecnicaUPC.fecha) == date.today()
+    ).count()
+    
+    # Pendientes en UPC
+    pendientes_upc = Solicitud.query.filter_by(estado_codigo='ASIGNADO_UPC').count()
+    
+    return render_template('tecnico/dashboard.html',
+                         solicitudes=solicitudes,
+                         mis_asignadas=mis_asignadas,
+                         en_evaluacion=en_evaluacion,
+                         aprobadas_hoy=aprobadas_hoy,
+                         pendientes_upc=pendientes_upc,
+                         user=user,
+                         estado_actual=estado_filtro)
+
+@app.route('/tecnico/solicitudes/<solicitud_id>/evaluar')
+@login_required
+@role_required('TECNICO_UPC', 'ENCARGADO_UPC')
+def tecnico_evaluar_solicitud(solicitud_id):
+    """Página de evaluación técnica de solicitud"""
+    solicitud = Solicitud.query.get_or_404(solicitud_id)
+    
+    # Verificar que esté en estado que el técnico puede evaluar
+    if solicitud.estado_codigo not in ['ASIGNADO_UPC', 'EN_EVALUACION']:
+        return redirect(url_for('tecnico_dashboard'))
+    
+    documentos = Documento.query.filter_by(solicitud_id=solicitud_id).all()
+    
+    # Asegurarse de que datos_formulario sea un diccionario
+    datos_formulario = solicitud.datos_formulario or {}
+    if isinstance(datos_formulario, str):
+        try:
+            import json
+            datos_formulario = json.loads(datos_formulario)
+        except:
+            datos_formulario = {}
+    elif not isinstance(datos_formulario, dict):
+        datos_formulario = {}
+    
+    return render_template('tecnico/evaluar_solicitud.html',
+                         solicitud=solicitud,
+                         documentos=documentos,
+                         datos_formulario=datos_formulario)
+
 @app.route('/solicitudes/<solicitud_id>/evaluar-upc', methods=['POST'])
 @login_required
 @role_required('TECNICO_UPC', 'ENCARGADO_UPC')
@@ -1561,7 +1659,7 @@ def firmar_dncd(solicitud_id):
                 'certificado_estado': certificado.estado if certificado else None,
                 'signature_data': resultado_firma['signature_data']
             })
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('dncd_dashboard'))
     
     except Exception as e:
         print("\n" + "="*70)
@@ -1576,7 +1674,7 @@ def firmar_dncd(solicitud_id):
         db.session.rollback()
         if request.is_json:
             return jsonify({'success': False, 'error': str(e)}), 500
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('dncd_dashboard'))
 
 # ============================================================================
 # RUTAS DE ENTREGA (VUS)
@@ -2054,6 +2152,260 @@ def inicializar_datos_base():
     print("   DNCD:       dncd@msp.gob.do       / dncd123")
 
 # ============================================================================
+# RUTAS DE DIRECCIÓN (Dashboard y Revisión)
+# ============================================================================
+
+@app.route('/direccion/dashboard')
+@login_required
+@role_required('DIRECCION')
+def direccion_dashboard():
+    """Dashboard de Dirección para firma de solicitudes"""
+    from datetime import date
+    
+    user_id = session.get('user_id')
+    user = Usuario.query.get(user_id) if user_id else None
+    
+    # Solicitudes pendientes de firma (aprobadas por UPC)
+    solicitudes = Solicitud.query.filter(
+        Solicitud.estado_codigo.in_(['APROBADO_UPC', 'PENDIENTE_FIRMA_DIRECCION'])
+    ).order_by(Solicitud.fecha_actualizacion.desc()).all()
+    
+    # Estadísticas
+    pendientes_firma = Solicitud.query.filter(
+        Solicitud.estado_codigo.in_(['APROBADO_UPC', 'PENDIENTE_FIRMA_DIRECCION'])
+    ).count()
+    
+    # Firmadas hoy
+    firmadas_hoy = HistorialEstadoSolicitud.query.filter(
+        HistorialEstadoSolicitud.estado_codigo.in_(['ENVIADO_DNCD', 'APROBADO_FINAL']),
+        db.func.date(HistorialEstadoSolicitud.fecha) == date.today(),
+        HistorialEstadoSolicitud.usuario_id == user_id
+    ).count()
+    
+    # Enviadas a DNCD (pendientes de firma DNCD)
+    enviadas_dncd = Solicitud.query.filter(
+        Solicitud.estado_codigo.in_(['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD'])
+    ).count()
+    
+    # Completadas este mes
+    from datetime import datetime
+    primer_dia_mes = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    completadas_mes = Solicitud.query.filter(
+        Solicitud.estado_codigo.in_(['APROBADO_FINAL', 'ENTREGADO']),
+        Solicitud.fecha_aprobacion >= primer_dia_mes
+    ).count()
+    
+    return render_template('direccion/dashboard.html',
+                         solicitudes=solicitudes,
+                         pendientes_firma=pendientes_firma,
+                         firmadas_hoy=firmadas_hoy,
+                         enviadas_dncd=enviadas_dncd,
+                         completadas_mes=completadas_mes,
+                         user=user,
+                         active_page='direccion')
+
+
+@app.route('/direccion/solicitudes/<solicitud_id>/revisar')
+@login_required
+@role_required('DIRECCION')
+def direccion_revisar_solicitud(solicitud_id):
+    """Vista de revisión y firma de solicitud para Dirección"""
+    solicitud = Solicitud.query.get_or_404(solicitud_id)
+    
+    # Verificar que esté en estado que Dirección puede firmar
+    if solicitud.estado_codigo not in ['APROBADO_UPC', 'PENDIENTE_FIRMA_DIRECCION']:
+        return redirect(url_for('direccion_dashboard'))
+    
+    # Obtener documentos
+    documentos = Documento.query.filter_by(solicitud_id=solicitud_id).all()
+    
+    # Obtener evaluación técnica aprobatoria
+    evaluacion = EvaluacionTecnicaUPC.query.filter_by(
+        solicitud_id=solicitud_id,
+        aprobado=True
+    ).order_by(EvaluacionTecnicaUPC.fecha.desc()).first()
+    
+    # Datos del formulario
+    datos_formulario = solicitud.datos_formulario or {}
+    if isinstance(datos_formulario, str):
+        import json
+        try:
+            datos_formulario = json.loads(datos_formulario)
+        except:
+            datos_formulario = {}
+    
+    return render_template('direccion/revisar_solicitud.html',
+                         solicitud=solicitud,
+                         documentos=documentos,
+                         evaluacion=evaluacion,
+                         datos_formulario=datos_formulario,
+                         active_page='direccion')
+
+
+@app.route('/direccion/solicitudes/<solicitud_id>/rechazar', methods=['POST'])
+@login_required
+@role_required('DIRECCION')
+def direccion_rechazar(solicitud_id):
+    """Devolver solicitud a UPC desde Dirección"""
+    solicitud = Solicitud.query.get_or_404(solicitud_id)
+    motivo = request.form.get('motivo_rechazo', '')
+    
+    # Cambiar estado
+    cambiar_estado_solicitud(solicitud_id, 'EN_EVALUACION', f'Devuelto por Dirección: {motivo}')
+    
+    # Crear observación
+    observacion = ObservacionSolicitud(
+        solicitud_id=solicitud_id,
+        usuario_id=session['user_id'],
+        rol_codigo='DIRECCION',
+        tipo='DEVOLUCION',
+        texto=motivo
+    )
+    db.session.add(observacion)
+    
+    # Notificar al técnico asignado
+    if solicitud.asignado_a_id:
+        crear_notificacion(
+            solicitud.asignado_a_id,
+            'DEVOLUCION_DIRECCION',
+            f'La solicitud {solicitud.numero_expediente} fue devuelta por Dirección: {motivo}',
+            solicitud_id
+        )
+    
+    db.session.commit()
+    registrar_auditoria('DEVOLUCION_DIRECCION', solicitud_id, f'Solicitud devuelta a UPC: {motivo}')
+    
+    return redirect(url_for('direccion_dashboard'))
+
+
+# ============================================================================
+# RUTAS DE DNCD (Dashboard, Revisión y Firma Final)
+# ============================================================================
+
+@app.route('/dncd/dashboard')
+@login_required
+@role_required('DNCD')
+def dncd_dashboard():
+    """Dashboard especializado para DNCD con solicitudes pendientes de aprobación final"""
+    user_id = session.get('user_id')
+    user = Usuario.query.get(user_id) if user_id else None
+    
+    # Solicitudes pendientes de firma DNCD (después de Dirección)
+    solicitudes = Solicitud.query.filter(
+        Solicitud.estado_codigo.in_(['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD'])
+    ).order_by(Solicitud.fecha_creacion.desc()).all()
+    
+    # Métricas
+    # Pendientes de firma
+    pendientes_firma = len(solicitudes)
+    
+    # Firmadas hoy por DNCD (cambio de estado a APROBADO_FINAL)
+    from datetime import date
+    firmadas_hoy = HistorialEstadoSolicitud.query.filter(
+        HistorialEstadoSolicitud.estado_codigo == 'APROBADO_FINAL',
+        db.func.date(HistorialEstadoSolicitud.fecha) == date.today()
+    ).count()
+    
+    # Listas para entrega (ya aprobadas por DNCD)
+    listas_entrega = Solicitud.query.filter_by(estado_codigo='APROBADO_FINAL').count()
+    
+    # Aprobadas este mes
+    from datetime import datetime
+    inicio_mes = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    aprobadas_mes = HistorialEstadoSolicitud.query.filter(
+        HistorialEstadoSolicitud.estado_codigo == 'APROBADO_FINAL',
+        HistorialEstadoSolicitud.fecha >= inicio_mes
+    ).count()
+    
+    return render_template(
+        'dncd/dashboard.html',
+        solicitudes=solicitudes,
+        user=user,
+        pendientes_firma=pendientes_firma,
+        firmadas_hoy=firmadas_hoy,
+        listas_entrega=listas_entrega,
+        aprobadas_mes=aprobadas_mes,
+        active_page='dncd_dashboard'
+    )
+
+
+@app.route('/dncd/solicitudes/<solicitud_id>/revisar')
+@login_required
+@role_required('DNCD')
+def dncd_revisar_solicitud(solicitud_id):
+    """Vista de revisión para DNCD antes de firmar"""
+    solicitud = Solicitud.query.get_or_404(solicitud_id)
+    
+    # Verificar que esté en estado correcto
+    if solicitud.estado_codigo not in ['ENVIADO_DNCD', 'PENDIENTE_FIRMA_DNCD']:
+        return redirect(url_for('dncd_dashboard'))
+    
+    # Obtener evaluación UPC
+    evaluacion = EvaluacionTecnicaUPC.query.filter_by(
+        solicitud_id=solicitud_id
+    ).order_by(EvaluacionTecnicaUPC.fecha.desc()).first()
+    
+    # Obtener certificado firmado por Dirección
+    certificado = None
+    if solicitud.certificado_id:
+        certificado = Certificado.query.get(solicitud.certificado_id)
+    
+    # Obtener documentos
+    documentos = Documento.query.filter_by(solicitud_id=solicitud_id).all()
+    
+    user_id = session.get('user_id')
+    user = Usuario.query.get(user_id) if user_id else None
+    
+    return render_template(
+        'dncd/revisar_solicitud.html',
+        solicitud=solicitud,
+        evaluacion=evaluacion,
+        certificado=certificado,
+        documentos=documentos,
+        user=user
+    )
+
+
+@app.route('/dncd/solicitudes/<solicitud_id>/rechazar', methods=['POST'])
+@login_required
+@role_required('DNCD')
+def dncd_rechazar(solicitud_id):
+    """Rechazar solicitud desde DNCD y devolverla a Dirección"""
+    data = request.get_json() if request.is_json else request.form
+    motivo = data.get('motivo_rechazo', 'Sin motivo especificado')
+    
+    solicitud = Solicitud.query.get_or_404(solicitud_id)
+    
+    # Cambiar estado a PENDIENTE_FIRMA_DIRECCION para que Dirección revise nuevamente
+    cambiar_estado_solicitud(solicitud_id, 'PENDIENTE_FIRMA_DIRECCION', f'Devuelto por DNCD: {motivo}')
+    
+    # Crear observación
+    observacion = ObservacionSolicitud(
+        solicitud_id=solicitud_id,
+        usuario_id=session['user_id'],
+        rol_codigo='DNCD',
+        tipo='DEVOLUCION',
+        texto=motivo
+    )
+    db.session.add(observacion)
+    
+    # Notificar a Dirección
+    usuarios_direccion = Usuario.query.filter_by(rol_codigo='DIRECCION', activo=True).all()
+    for usuario_dir in usuarios_direccion:
+        crear_notificacion(
+            usuario_dir.id,
+            'DEVOLUCION_DNCD',
+            f'La solicitud {solicitud.numero_expediente} fue devuelta por DNCD: {motivo}',
+            solicitud_id
+        )
+    
+    db.session.commit()
+    registrar_auditoria('DEVOLUCION_DNCD', solicitud_id, f'Solicitud devuelta a Dirección: {motivo}')
+    
+    return redirect(url_for('dncd_dashboard'))
+
+
+# ============================================================================
 # RUTAS DE FIRMA DIRECCION
 # ============================================================================
 
@@ -2195,7 +2547,7 @@ def firmar_direccion(solicitud_id):
                 'workflow_status': workflow.status,
                 'signature_data': resultado_firma['signature_data']
             })
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('direccion_dashboard'))
     
     except Exception as e:
         print("\n" + "="*70)
@@ -2212,7 +2564,7 @@ def firmar_direccion(solicitud_id):
         
         if request.is_json:
             return jsonify({'success': False, 'error': str(e)}), 500
-        return redirect(url_for('dashboard'))
+        return redirect(url_for('direccion_dashboard'))
 
 # ============================================================================
 # RUTAS DE CERTIFICADOS
@@ -2511,15 +2863,21 @@ def subir_documento(solicitud_id):
         # Leer el contenido del archivo
         file_content = archivo.read()
         
-        # Subir a Supabase Storage
-        response = supabase.storage.from_(STORAGE_BUCKET).upload(
+        # Subir a Supabase Storage usando cliente admin (bypass RLS)
+        response = supabase_admin.storage.from_(STORAGE_BUCKET).upload(
             path=nombre_storage,
             file=file_content,
             file_options={"content-type": archivo.content_type or "application/octet-stream"}
         )
         
+        # Verificar si la respuesta es un error
+        if hasattr(response, 'status_code') and response.status_code >= 400:
+            error_msg = response.json() if hasattr(response, 'json') else str(response)
+            print(f"Error al subir documento {archivo.filename}: {error_msg}")
+            return jsonify({'error': f'Error al subir archivo a storage: {error_msg}'}), 500
+        
         # Obtener URL pública del archivo
-        file_url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(nombre_storage)
+        file_url = supabase_admin.storage.from_(STORAGE_BUCKET).get_public_url(nombre_storage)
         
         # Registrar en base de datos
         documento = Documento(
@@ -2530,16 +2888,33 @@ def subir_documento(solicitud_id):
             nombre_storage=nombre_storage,
             ruta=file_url  # Guardar la URL pública
         )
-        db.session.add(documento)
-        db.session.commit()
         
-        registrar_auditoria('SUBIR_DOCUMENTO', solicitud_id, f'Documento {archivo.filename} subido a Supabase Storage')
-        
-        return jsonify({'success': True, 'documento_id': documento.id, 'url': file_url})
+        try:
+            db.session.add(documento)
+            db.session.flush()  # Flush para obtener el ID antes de commit
+            documento_id = documento.id
+            db.session.commit()
+            
+            registrar_auditoria('SUBIR_DOCUMENTO', solicitud_id, f'Documento {archivo.filename} subido a Supabase Storage')
+            
+            return jsonify({'success': True, 'documento_id': documento_id, 'url': file_url})
+        except Exception as db_error:
+            db.session.rollback()
+            # Si falla el registro en BD, intentar eliminar el archivo subido
+            try:
+                supabase_admin.storage.from_(STORAGE_BUCKET).remove([nombre_storage])
+            except:
+                pass
+            print(f"Error al registrar documento en BD: {str(db_error)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'error': f'Error al registrar documento en base de datos: {str(db_error)}'}), 500
         
     except Exception as e:
         db.session.rollback()
-        print(f"Error al subir documento a Supabase Storage: {str(e)}")
+        print(f"Error al subir documento {archivo.filename}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Error al subir el archivo: {str(e)}'}), 500
 
 @app.route('/documentos/<documento_id>/descargar')
@@ -2562,8 +2937,8 @@ def descargar_documento(documento_id):
     registrar_auditoria('DESCARGAR_DOCUMENTO', documento.solicitud_id, f'Documento {documento.nombre_original}')
     
     try:
-        # Descargar desde Supabase Storage
-        response = supabase.storage.from_(STORAGE_BUCKET).download(documento.nombre_storage)
+        # Descargar desde Supabase Storage usando cliente admin
+        response = supabase_admin.storage.from_(STORAGE_BUCKET).download(documento.nombre_storage)
         
         # Crear un archivo en memoria
         file_stream = io.BytesIO(response)

@@ -9,7 +9,6 @@
 {% endblock %}
 
 {% block content %}
-    <!-- Estilos locales para mejorar el diseño de esta pantalla -->
     <style>
         .form-wrapper {
             max-width: 980px;
@@ -38,7 +37,6 @@
             font-size: .9rem;
         }
 
-        /* Tarjeta del formulario */
         .form-card {
             border-radius: 1.2rem;
             box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
@@ -110,6 +108,7 @@
             font-weight: 600;
             color: #1f2933;
             margin-bottom: .25rem;
+            display: block;
         }
 
         .form-label-hint {
@@ -117,6 +116,11 @@
             font-size: .78rem;
             color: #64748b;
             margin-left: .35rem;
+        }
+
+        .form-label-required::after {
+            content: " *";
+            color: #dc2626;
         }
 
         .form-control {
@@ -143,6 +147,90 @@
         .text-warning {
             font-size: .9rem;
             color: #b45309;
+        }
+
+        /* Info del servicio seleccionado */
+        .servicio-info {
+            display: none;
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border: 1px solid #86efac;
+            border-radius: .8rem;
+            padding: 1rem 1.25rem;
+            margin-top: 1rem;
+        }
+
+        .servicio-info.visible {
+            display: block;
+        }
+
+        .servicio-info-header {
+            font-weight: 600;
+            color: #166534;
+            margin-bottom: .5rem;
+            font-size: .9rem;
+        }
+
+        .servicio-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: .75rem;
+        }
+
+        .servicio-info-item {
+            font-size: .82rem;
+        }
+
+        .servicio-info-label {
+            color: #15803d;
+            font-weight: 500;
+        }
+
+        .servicio-info-value {
+            color: #166534;
+        }
+
+        /* Campos dinámicos */
+        #campos-dinamicos {
+            display: none;
+        }
+
+        #campos-dinamicos.visible {
+            display: block;
+        }
+
+        /* Lista de requisitos */
+        .requisitos-list {
+            background: #fef3c7;
+            border: 1px solid #fcd34d;
+            border-radius: .8rem;
+            padding: 1rem 1.25rem;
+            margin-top: 1rem;
+        }
+
+        .requisitos-list-title {
+            font-weight: 600;
+            color: #92400e;
+            margin-bottom: .75rem;
+            font-size: .9rem;
+        }
+
+        .requisitos-list ul {
+            margin: 0;
+            padding-left: 1.25rem;
+            list-style: none;
+        }
+
+        .requisitos-list li {
+            font-size: .82rem;
+            color: #78350f;
+            margin-bottom: .4rem;
+            position: relative;
+        }
+
+        .requisitos-list li::before {
+            content: "📄";
+            position: absolute;
+            left: -1.25rem;
         }
 
         /* Switch de pago */
@@ -216,7 +304,6 @@
             overflow: hidden;
         }
 
-        /* Botones footer */
         .form-footer .btn-secondary {
             font-size: .9rem;
         }
@@ -260,7 +347,8 @@
         <form action="{{ url_for('nueva_solicitud') }}"
               method="post"
               enctype="multipart/form-data"
-              class="card form-card">
+              class="card form-card"
+              id="form-solicitud">
 
             <div class="card-body">
                 {# =================== PASO 1: SERVICIO =================== #}
@@ -273,18 +361,41 @@
                     {% if servicios %}
                         <div class="form-grid">
                             <div class="form-field form-field-full">
-                                <label for="servicio_id" class="form-label">Servicio</label>
+                                <label for="servicio_id" class="form-label form-label-required">Servicio</label>
                                 <select id="servicio_id"
                                         name="servicio_id"
                                         class="form-control"
                                         required>
                                     <option value="">Seleccione un servicio...</option>
                                     {% for s in servicios %}
-                                        <option value="{{ s.id }}">
+                                        <option value="{{ s.id }}"
+                                                data-codigo="{{ s.codigo }}"
+                                                data-nombre="{{ s.nombre }}"
+                                                data-costo="{{ s.costo }}"
+                                                data-tiempo="{{ s.tiempo_estimado }}">
                                             {{ s.nombre or s.descripcion or ('Servicio #' ~ s.id) }}
                                         </option>
                                     {% endfor %}
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- Info del servicio seleccionado -->
+                        <div id="servicio-info" class="servicio-info">
+                            <div class="servicio-info-header">Detalles del servicio seleccionado</div>
+                            <div class="servicio-info-grid">
+                                <div class="servicio-info-item">
+                                    <span class="servicio-info-label">Código:</span>
+                                    <span class="servicio-info-value" id="info-codigo">-</span>
+                                </div>
+                                <div class="servicio-info-item">
+                                    <span class="servicio-info-label">Costo:</span>
+                                    <span class="servicio-info-value" id="info-costo">-</span>
+                                </div>
+                                <div class="servicio-info-item">
+                                    <span class="servicio-info-label">Tiempo estimado:</span>
+                                    <span class="servicio-info-value" id="info-tiempo">-</span>
+                                </div>
                             </div>
                         </div>
                     {% else %}
@@ -296,45 +407,28 @@
 
                 <hr class="section-divider"/>
 
-                {# =================== PASO 2: DATOS DEL FORMULARIO =================== #}
-                <section class="form-section">
+                {# =================== PASO 2: CAMPOS DINÁMICOS =================== #}
+                <section class="form-section" id="campos-dinamicos">
                     <h2 class="section-title">Datos de la solicitud</h2>
                     <p class="section-description">
-                        Ingrese la información relevante del solicitante, sustancia o trámite.
+                        Complete los campos requeridos para este tipo de servicio.
                     </p>
 
-                    <div class="form-grid">
-                        <div class="form-field form-field-full">
-                            <label for="datos_formulario" class="form-label">
-                                Detalle de la solicitud
-                                <span class="form-label-hint">(texto libre o JSON)</span>
-                            </label>
-                            <textarea id="datos_formulario"
-                                      name="datos_formulario"
-                                      class="form-control"
-                                      placeholder='Ejemplo:
-{
-  "empresa": "Farmacéutica Caribe, SRL",
-  "rnc": "1-01-12345-6",
-  "tipo_sustancia": "Psicotrópica",
-  "uso": "Importación para uso hospitalario"
-}'>
-                            </textarea>
-                            <p class="field-help">
-                                Puede ingresar una descripción en texto simple o un objeto JSON con la estructura
-                                que estén utilizando para el formulario.
-                            </p>
-                        </div>
+                    <div class="form-grid" id="campos-dinamicos-container">
+                        <!-- Los campos se generarán dinámicamente con JavaScript -->
                     </div>
+
+                    <!-- Campo hidden para guardar el JSON final -->
+                    <input type="hidden" name="datos_formulario" id="datos_formulario">
                 </section>
 
-                <hr class="section-divider"/>
+                <hr class="section-divider" id="divider-pago" style="display: none;"/>
 
                 {# =================== PASO 3: INFORMACIÓN DE PAGO =================== #}
-                <section class="form-section">
-                    <h2 class="section-title">Información de pago (opcional)</h2>
+                <section class="form-section" id="seccion-pago" style="display: none;">
+                    <h2 class="section-title">Información de pago</h2>
                     <p class="section-description">
-                        Registre los datos de pago si ya se realizó el mismo. Si no, puede dejar esta sección en blanco.
+                        Registre los datos de pago si ya se realizó el mismo.
                     </p>
 
                     <div class="form-grid">
@@ -372,14 +466,24 @@
                     </div>
                 </section>
 
-                <hr class="section-divider"/>
+                <hr class="section-divider" id="divider-docs" style="display: none;"/>
 
                 {# =================== PASO 4: DOCUMENTOS =================== #}
-                <section class="form-section">
+                <section class="form-section" id="seccion-documentos" style="display: none;">
                     <h2 class="section-title">Documentos de soporte</h2>
                     <p class="section-description">
                         Adjunte la documentación requerida para este tipo de servicio.
                     </p>
+
+                    <!-- Lista de requisitos documentales -->
+                    <div id="requisitos-documentales" style="display: none;">
+                        <div class="requisitos-list">
+                            <div class="requisitos-list-title">Documentos requeridos para este servicio:</div>
+                            <ul id="requisitos-list">
+                                <!-- Se llenarán dinámicamente -->
+                            </ul>
+                        </div>
+                    </div>
 
                     <div class="form-grid">
                         <div class="form-field form-field-full">
@@ -394,8 +498,7 @@
                                    multiple
                                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx">
                             <p class="field-help">
-                                Puede seleccionar uno o varios archivos. El tamaño máximo por archivo
-                                dependerá de la configuración del servidor.
+                                Puede seleccionar uno o varios archivos. Asegúrese de incluir todos los documentos requeridos.
                             </p>
                             <ul id="file_preview" class="file-preview-list"></ul>
                         </div>
@@ -405,16 +508,227 @@
 
             <footer class="card-footer form-footer">
                 <a href="{{ url_for('dashboard') }}" class="btn btn-secondary">Cancelar</a>
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" class="btn btn-primary" id="btn-submit" disabled>
                     Registrar solicitud
                 </button>
             </footer>
         </form>
     </div>
 
-    <!-- JS ligero para la UX de pago y vista previa de archivos -->
     <script>
         (function () {
+            // Configuración de campos por tipo de servicio
+            const CAMPOS_POR_SERVICIO = {
+                'CERT_CLASE_A': [
+                    { nombre: 'nombre_sustancia', label: 'Nombre de la sustancia controlada', tipo: 'text', required: true, placeholder: 'Ej: Morfina' },
+                    { nombre: 'cantidad', label: 'Cantidad solicitada', tipo: 'text', required: true, placeholder: 'Ej: 500 gramos' },
+                    { nombre: 'uso_previsto', label: 'Uso previsto', tipo: 'textarea', required: true, placeholder: 'Describa el uso médico o científico previsto' },
+                    { nombre: 'licencia_profesional', label: 'Número de licencia profesional', tipo: 'text', required: true, placeholder: 'Ej: LP-12345-2024' },
+                    { nombre: 'observaciones', label: 'Observaciones adicionales', tipo: 'textarea', required: false, placeholder: 'Información adicional relevante' }
+                ],
+                'CERT_CLASE_B': [
+                    { nombre: 'nombre_establecimiento', label: 'Nombre del establecimiento', tipo: 'text', required: true, placeholder: 'Ej: Hospital General' },
+                    { nombre: 'rnc', label: 'RNC del establecimiento', tipo: 'text', required: true, placeholder: 'Ej: 1-01-12345-6' },
+                    { nombre: 'tipo_establecimiento', label: 'Tipo de establecimiento', tipo: 'select', required: true, opciones: ['Público', 'Privado'] },
+                    { nombre: 'direccion', label: 'Dirección completa', tipo: 'text', required: true, placeholder: 'Calle, número, sector, ciudad' },
+                    { nombre: 'responsable_tecnico', label: 'Responsable técnico', tipo: 'text', required: true, placeholder: 'Nombre completo del responsable' },
+                    { nombre: 'licencia_responsable', label: 'Licencia del responsable técnico', tipo: 'text', required: true, placeholder: 'Ej: LP-54321-2024' },
+                    { nombre: 'observaciones', label: 'Observaciones adicionales', tipo: 'textarea', required: false, placeholder: 'Información adicional relevante' }
+                ],
+                'IMPORT_MATERIA_PRIMA': [
+                    { nombre: 'empresa_importadora', label: 'Empresa importadora', tipo: 'text', required: true, placeholder: 'Nombre de la empresa' },
+                    { nombre: 'rnc', label: 'RNC de la empresa', tipo: 'text', required: true, placeholder: 'Ej: 1-01-12345-6' },
+                    { nombre: 'sustancia', label: 'Sustancia a importar', tipo: 'text', required: true, placeholder: 'Nombre de la materia prima' },
+                    { nombre: 'cantidad', label: 'Cantidad a importar', tipo: 'text', required: true, placeholder: 'Ej: 1000 kg' },
+                    { nombre: 'pais_origen', label: 'País de origen', tipo: 'text', required: true, placeholder: 'País exportador' },
+                    { nombre: 'uso_industrial', label: 'Uso industrial previsto', tipo: 'textarea', required: true, placeholder: 'Describa el proceso industrial' },
+                    { nombre: 'observaciones', label: 'Observaciones adicionales', tipo: 'textarea', required: false, placeholder: 'Información adicional relevante' }
+                ],
+                'IMPORT_MEDICAMENTO': [
+                    { nombre: 'empresa_importadora', label: 'Empresa importadora', tipo: 'text', required: true, placeholder: 'Nombre de la empresa' },
+                    { nombre: 'rnc', label: 'RNC de la empresa', tipo: 'text', required: true, placeholder: 'Ej: 1-01-12345-6' },
+                    { nombre: 'nombre_medicamento', label: 'Nombre del medicamento', tipo: 'text', required: true, placeholder: 'Nombre comercial' },
+                    { nombre: 'principio_activo', label: 'Principio activo', tipo: 'text', required: true, placeholder: 'Sustancia controlada contenida' },
+                    { nombre: 'cantidad', label: 'Cantidad a importar', tipo: 'text', required: true, placeholder: 'Ej: 5000 unidades' },
+                    { nombre: 'pais_origen', label: 'País de origen', tipo: 'text', required: true, placeholder: 'País exportador' },
+                    { nombre: 'registro_sanitario', label: 'Número de registro sanitario', tipo: 'text', required: true, placeholder: 'Ej: RS-2024-12345' },
+                    { nombre: 'observaciones', label: 'Observaciones adicionales', tipo: 'textarea', required: false, placeholder: 'Información adicional relevante' }
+                ]
+            };
+
+            // Requisitos documentales por servicio
+            const REQUISITOS_DOCUMENTALES = {
+                'CERT_CLASE_A': [
+                    'Documento de identidad válido y legible',
+                    'Licencia profesional vigente',
+                    'Carta de solicitud formal',
+                    'Justificación del uso de la sustancia'
+                ],
+                'CERT_CLASE_B': [
+                    'RNC del establecimiento',
+                    'Licencia de funcionamiento',
+                    'Documento de identidad del responsable técnico',
+                    'Licencia profesional del responsable técnico',
+                    'Plano de ubicación del establecimiento'
+                ],
+                'IMPORT_MATERIA_PRIMA': [
+                    'RNC de la empresa',
+                    'Licencia de importación vigente',
+                    'Factura proforma del proveedor',
+                    'Certificado de análisis de la sustancia',
+                    'Autorización de la DNCD (si aplica)'
+                ],
+                'IMPORT_MEDICAMENTO': [
+                    'RNC de la empresa',
+                    'Registro sanitario del medicamento',
+                    'Factura proforma del proveedor',
+                    'Certificado de análisis del laboratorio fabricante',
+                    'Autorización de la DNCD'
+                ]
+            };
+
+            // Referencias a elementos
+            const servicioSelect = document.getElementById('servicio_id');
+            const servicioInfo = document.getElementById('servicio-info');
+            const camposDinamicosSection = document.getElementById('campos-dinamicos');
+            const camposDinamicosContainer = document.getElementById('campos-dinamicos-container');
+            const seccionPago = document.getElementById('seccion-pago');
+            const seccionDocumentos = document.getElementById('seccion-documentos');
+            const dividerPago = document.getElementById('divider-pago');
+            const dividerDocs = document.getElementById('divider-docs');
+            const btnSubmit = document.getElementById('btn-submit');
+            const requisitosDocumentales = document.getElementById('requisitos-documentales');
+            const requisitosList = document.getElementById('requisitos-list');
+
+            // Manejador de cambio de servicio
+            servicioSelect.addEventListener('change', function () {
+                const selectedOption = this.options[this.selectedIndex];
+                
+                if (!this.value) {
+                    ocultarTodo();
+                    return;
+                }
+
+                // Mostrar info del servicio
+                mostrarInfoServicio(selectedOption);
+
+                // Generar campos dinámicos
+                const codigo = selectedOption.dataset.codigo;
+                generarCamposDinamicos(codigo);
+
+                // Mostrar requisitos documentales
+                mostrarRequisitos(codigo);
+
+                // Mostrar secciones
+                mostrarSecciones();
+            });
+
+            function mostrarInfoServicio(option) {
+                document.getElementById('info-codigo').textContent = option.dataset.codigo || '-';
+                document.getElementById('info-costo').textContent = option.dataset.costo ? `RD$ ${parseFloat(option.dataset.costo).toFixed(2)}` : '-';
+                document.getElementById('info-tiempo').textContent = option.dataset.tiempo || '-';
+                servicioInfo.classList.add('visible');
+            }
+
+            function generarCamposDinamicos(codigoServicio) {
+                const campos = CAMPOS_POR_SERVICIO[codigoServicio];
+                
+                if (!campos) {
+                    camposDinamicosContainer.innerHTML = '<p class="text-warning">No hay campos definidos para este servicio.</p>';
+                    camposDinamicosSection.classList.add('visible');
+                    return;
+                }
+
+                camposDinamicosContainer.innerHTML = '';
+
+                campos.forEach(campo => {
+                    const fieldDiv = document.createElement('div');
+                    fieldDiv.className = campo.tipo === 'textarea' ? 'form-field form-field-full' : 'form-field';
+
+                    const label = document.createElement('label');
+                    label.className = 'form-label' + (campo.required ? ' form-label-required' : '');
+                    label.setAttribute('for', campo.nombre);
+                    label.textContent = campo.label;
+
+                    let input;
+                    if (campo.tipo === 'textarea') {
+                        input = document.createElement('textarea');
+                        input.className = 'form-control';
+                        input.rows = 4;
+                    } else if (campo.tipo === 'select') {
+                        input = document.createElement('select');
+                        input.className = 'form-control';
+                        const defaultOption = document.createElement('option');
+                        defaultOption.value = '';
+                        defaultOption.textContent = 'Seleccione...';
+                        input.appendChild(defaultOption);
+                        
+                        campo.opciones.forEach(opcion => {
+                            const opt = document.createElement('option');
+                            opt.value = opcion;
+                            opt.textContent = opcion;
+                            input.appendChild(opt);
+                        });
+                    } else {
+                        input = document.createElement('input');
+                        input.type = campo.tipo;
+                        input.className = 'form-control';
+                    }
+
+                    input.id = campo.nombre;
+                    input.name = campo.nombre;
+                    input.required = campo.required;
+                    if (campo.placeholder) {
+                        input.placeholder = campo.placeholder;
+                    }
+
+                    fieldDiv.appendChild(label);
+                    fieldDiv.appendChild(input);
+                    camposDinamicosContainer.appendChild(fieldDiv);
+                });
+
+                camposDinamicosSection.classList.add('visible');
+            }
+
+            function mostrarRequisitos(codigoServicio) {
+                const requisitos = REQUISITOS_DOCUMENTALES[codigoServicio];
+                
+                if (!requisitos || requisitos.length === 0) {
+                    requisitosDocumentales.style.display = 'none';
+                    return;
+                }
+
+                requisitosList.innerHTML = '';
+                requisitos.forEach(req => {
+                    const li = document.createElement('li');
+                    li.textContent = req;
+                    requisitosList.appendChild(li);
+                });
+
+                requisitosDocumentales.style.display = 'block';
+            }
+
+            function mostrarSecciones() {
+                dividerPago.style.display = 'block';
+                seccionPago.style.display = 'block';
+                dividerDocs.style.display = 'block';
+                seccionDocumentos.style.display = 'block';
+                btnSubmit.disabled = false;
+            }
+
+            function ocultarTodo() {
+                servicioInfo.classList.remove('visible');
+                camposDinamicosSection.classList.remove('visible');
+                dividerPago.style.display = 'none';
+                seccionPago.style.display = 'none';
+                dividerDocs.style.display = 'none';
+                seccionDocumentos.style.display = 'none';
+                btnSubmit.disabled = true;
+                camposDinamicosContainer.innerHTML = '';
+                requisitosDocumentales.style.display = 'none';
+            }
+
+            // Toggle de pago
             const pagadoCheckbox = document.getElementById('pagado_checkbox');
             const campoMonto = document.getElementById('campo_monto_pagado');
             const campoRef = document.getElementById('campo_referencia_pago');
@@ -425,14 +739,13 @@
                     campoMonto.style.display = visible ? 'block' : 'none';
                     campoRef.style.display = visible ? 'block' : 'none';
                     if (!visible) {
-                        const montoInput = document.getElementById('monto_pagado');
-                        const refInput = document.getElementById('referencia_pago');
-                        if (montoInput) montoInput.value = '';
-                        if (refInput) refInput.value = '';
+                        document.getElementById('monto_pagado').value = '';
+                        document.getElementById('referencia_pago').value = '';
                     }
                 });
             }
 
+            // Preview de archivos
             const inputDocs = document.getElementById('documentos');
             const previewList = document.getElementById('file_preview');
 
@@ -449,6 +762,25 @@
                     });
                 });
             }
+
+            // Antes de enviar el formulario, construir el JSON con los datos dinámicos
+            document.getElementById('form-solicitud').addEventListener('submit', function (e) {
+                const selectedOption = servicioSelect.options[servicioSelect.selectedIndex];
+                const codigo = selectedOption.dataset.codigo;
+                const campos = CAMPOS_POR_SERVICIO[codigo];
+
+                if (!campos) return;
+
+                const datosJSON = {};
+                campos.forEach(campo => {
+                    const input = document.getElementById(campo.nombre);
+                    if (input) {
+                        datosJSON[campo.nombre] = input.value;
+                    }
+                });
+
+                document.getElementById('datos_formulario').value = JSON.stringify(datosJSON);
+            });
         })();
     </script>
 {% endblock %}

@@ -300,31 +300,31 @@
                         <strong>Costo oficial:</strong> {{ requisitos.costo }}
                     </div>
 
-                    <h3 class="section-title">Campos del formulario</h3>
+                    <h3 class="section-title">Campos del formulario - Verificación manual</h3>
+                    <p class="section-sub" style="margin-bottom:10px;">
+                        Marque los campos que el solicitante ha completado correctamente según la documentación revisada.
+                    </p>
 
-                    {% if campos_cumplidos %}
-                        <div class="alert alert-success">
-                            ✓ {{ campos_cumplidos|length }} de {{ requisitos.campos_requeridos|length }}
-                            campos completados correctamente.
-                        </div>
-                    {% endif %}
-
-                    {% if campos_faltantes %}
-                        <div class="alert alert-warning">
-                            ⚠️ Faltan {{ campos_faltantes|length }} campos requeridos por completar.
-                        </div>
-                    {% endif %}
-
-                    <div class="datos-formulario">
+                    <div class="checklist-block">
                         {% for campo in requisitos.campos_requeridos %}
                             {% set valor = datos_formulario.get(campo.campo) %}
-                            <div class="campo-dato {% if not valor or not valor.strip() %}faltante{% endif %}">
-                                <label>{{ campo.nombre }}</label>
-                                <div class="valor">
+                            <div class="checklist-item" style="flex-direction:column; align-items:flex-start; padding:10px;">
+                                <div style="display:flex; align-items:center; gap:8px; width:100%; margin-bottom:6px;">
+                                    <input type="checkbox" 
+                                           class="req-campo" 
+                                           id="campo-{{ loop.index }}"
+                                           data-campo="{{ campo.nombre }}"
+                                           {% if valor and valor.strip() %}checked{% endif %}>
+                                    <label for="campo-{{ loop.index }}" style="font-weight:600; font-size:12px; margin:0; cursor:pointer;">
+                                        {{ campo.nombre }}
+                                    </label>
+                                </div>
+                                <div style="margin-left:24px; font-size:11px; color:#6b7280;">
                                     {% if valor and valor.strip() %}
-                                        {{ valor }}
+                                        <span style="color:#059669;">📝 Valor registrado:</span> 
+                                        <span style="color:#111827;">{{ valor }}</span>
                                     {% else %}
-                                        ❌ No proporcionado
+                                        <span style="color:#f59e0b;">📋 Revise información para confirmar</span>
                                     {% endif %}
                                 </div>
                             </div>
@@ -424,9 +424,9 @@
                 <div class="card-body">
                     <div id="resumen-verificacion" class="resumen-box">
                         <p>
-                            <strong>Campos completados:</strong>
+                            <strong>Campos del formulario verificados:</strong>
                             <span id="resumen-campos">
-                            {{ campos_cumplidos|length }}/{{ requisitos.campos_requeridos|length }}
+                            0/{{ requisitos.campos_requeridos|length }}
                         </span>
                         </p>
                         <p>
@@ -489,24 +489,29 @@
 
     <script>
         function actualizarResumen() {
+            // Verificación de campos del formulario
+            const camposChecked = document.querySelectorAll('.req-campo:checked').length;
+            const camposTotal = document.querySelectorAll('.req-campo').length;
+            
+            // Documentos específicos
             const docsChecked = document.querySelectorAll('.req-doc:checked').length;
             const docsTotal = document.querySelectorAll('.req-doc').length;
+            
+            // Verificación general
             const generalChecked = document.querySelectorAll('.req-general:checked').length;
             const generalTotal = document.querySelectorAll('.req-general').length;
 
+            document.getElementById('resumen-campos').textContent = `${camposChecked}/${camposTotal}`;
             document.getElementById('resumen-docs').textContent = `${docsChecked}/${docsTotal}`;
             document.getElementById('resumen-general').textContent = `${generalChecked}/${generalTotal}`;
 
-            const camposCompletos = {{ campos_cumplidos|length }};
-            const camposTotal = {{ requisitos.campos_requeridos|length }};
-            const camposFaltantes = {{ campos_faltantes|length }};
-
             const estadoDiv = document.getElementById('estado-verificacion');
 
-            if (camposFaltantes > 0) {
+            // Evaluación del estado general
+            if (camposChecked < camposTotal) {
                 estadoDiv.style.background = '#fef2f2';
                 estadoDiv.style.color = '#b91c1c';
-                estadoDiv.textContent = `❌ INCOMPLETO: Faltan ${camposFaltantes} campos del formulario`;
+                estadoDiv.textContent = `❌ INCOMPLETO: Faltan ${camposTotal - camposChecked} campos por verificar`;
             } else if (docsChecked < docsTotal || generalChecked < generalTotal) {
                 estadoDiv.style.background = '#fffbeb';
                 estadoDiv.style.color = '#92400e';
@@ -518,23 +523,31 @@
             }
         }
 
-        document.querySelectorAll('.req-doc, .req-general').forEach(cb => {
+        document.querySelectorAll('.req-campo, .req-doc, .req-general').forEach(cb => {
             cb.addEventListener('change', actualizarResumen);
         });
 
         actualizarResumen();
 
         function aprobar() {
-            const camposFaltantes = {{ campos_faltantes|length }};
+            const camposChecked = document.querySelectorAll('.req-campo:checked').length;
+            const camposTotal = document.querySelectorAll('.req-campo').length;
+            const camposFaltantes = camposTotal - camposChecked;
 
             if (camposFaltantes > 0) {
-                if (!confirm(`⚠️ ADVERTENCIA: Hay ${camposFaltantes} campos del formulario sin completar.\n\n¿Está seguro de aprobar esta solicitud de todas formas?`)) {
+                if (!confirm(`⚠️ ADVERTENCIA: Hay ${camposFaltantes} campos que no han sido verificados como completos.\n\n¿Está seguro de aprobar esta solicitud de todas formas?`)) {
                     return;
                 }
             }
 
             if (confirm('¿Está seguro de aprobar esta solicitud y enviarla a UPC para evaluación técnica?')) {
                 const observaciones = document.getElementById('observaciones').value;
+
+                // Campos verificados manualmente
+                const camposVerificados = [];
+                document.querySelectorAll('.req-campo:checked').forEach(cb => {
+                    camposVerificados.push(cb.getAttribute('data-campo'));
+                });
 
                 const docsVerificados = [];
                 document.querySelectorAll('.req-doc:checked').forEach(cb => {
@@ -555,10 +568,11 @@
                         cumple: true,
                         observaciones: observaciones,
                         checklist: {
+                            campos_verificados: camposVerificados,
                             documentos_especificos: docsVerificados,
                             verificacion_general: generalVerificado,
-                            campos_completos: {{ campos_cumplidos|length }},
-                            campos_totales: {{ requisitos.campos_requeridos|length }}
+                            campos_completos: camposChecked,
+                            campos_totales: camposTotal
                         }
                     })
                 })

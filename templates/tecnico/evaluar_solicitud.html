@@ -1,0 +1,434 @@
+{% extends "base_app.html" %}
+{% set active_page = 'solicitudes' %}
+
+{% block title %}Evaluación Técnica · {{ solicitud.numero_expediente }}{% endblock %}
+
+{% block breadcrumb %}
+    <span class="breadcrumb-main">Técnico UPC</span>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-sub">Evaluación técnica {{ solicitud.numero_expediente }}</span>
+{% endblock %}
+
+{% block content %}
+    <style>
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 10px;
+        }
+        .detail-item {
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            font-size: 12px;
+        }
+        .detail-label {
+            font-size: 11px;
+            color: var(--text-soft);
+            margin-bottom: 2px;
+            display: block;
+        }
+        .detail-value {
+            font-size: 13px;
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        .section-title {
+            margin: 0 0 4px;
+            font-size: 14px;
+        }
+        .section-sub {
+            margin: 0 0 10px;
+            font-size: 12px;
+            color: var(--text-soft);
+        }
+
+        .checklist-block {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .checklist-item {
+            padding: 8px 10px;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            background: #f9fafb;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .checklist-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+        }
+
+        .radio-decision {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 2px solid #e5e7eb;
+            background: #f9fafb;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .radio-decision:hover {
+            border-color: #d1d5db;
+        }
+        .radio-decision input[type="radio"] {
+            width: 16px;
+            height: 16px;
+            margin-right: 8px;
+        }
+        .radio-decision.selected-aprobar {
+            border-color: #22c55e;
+            background: #f0fdf4;
+        }
+        .radio-decision.selected-rechazar {
+            border-color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .textarea-notas {
+            width: 100%;
+            min-height: 90px;
+            border-radius: 10px;
+            border: 1px solid #d1d5db;
+            padding: 8px 10px;
+            font-size: 13px;
+            resize: vertical;
+            outline: none;
+        }
+        .textarea-notas:focus {
+            border-color: #22c55e;
+            box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.3);
+        }
+
+        .actions-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .btn-secondary {
+            border-radius: 999px;
+            padding: 7px 14px;
+            border: 1px solid #d1d5db;
+            background: #f3f4f6;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .documentos-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            font-size: 12px;
+        }
+        .documentos-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px dashed #e5e7eb;
+        }
+        .documentos-list li:last-child {
+            border-bottom: none;
+        }
+
+        .datos-formulario {
+            background: #f9fafb;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+            padding: 10px;
+            margin-top: 8px;
+            max-height: 320px;
+            overflow: auto;
+        }
+        .campo-dato {
+            margin-bottom: 8px;
+            padding: 6px 8px;
+            background: #ffffff;
+            border-radius: 8px;
+            border-left: 3px solid #22c55e;
+            font-size: 12px;
+        }
+        .campo-dato label {
+            font-weight: 600;
+            color: #374151;
+            font-size: 12px;
+            display: block;
+        }
+        .campo-dato .valor {
+            margin-top: 3px;
+            color: #111827;
+        }
+
+        .alert {
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin-bottom: 8px;
+        }
+        .alert-info {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+        }
+        .alert-warning {
+            background: #fffbeb;
+            border: 1px solid #fed7aa;
+            color: #92400e;
+        }
+
+        .badge-soft {
+            display: inline-flex;
+            align-items: center;
+            padding: 3px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            background: #eff6ff;
+            color: #1d4ed8;
+            border: 1px solid #bfdbfe;
+            gap: 4px;
+        }
+    </style>
+
+    <h1 class="page-title">Evaluación técnica UPC</h1>
+    <p class="page-subtitle">
+        Expediente {{ solicitud.numero_expediente }} · Validación de requisitos técnicos y normativos.
+    </p>
+
+    <div class="grid-main">
+        <!-- Columna izquierda: información + documentos + datos formulario -->
+        <div>
+            <!-- Información de la solicitud -->
+            <section class="card">
+                <header class="card-header">
+                    <h2 class="card-title">Información de la solicitud</h2>
+                    <span class="card-badge">{{ solicitud.estado.descripcion }}</span>
+                </header>
+                <div class="card-body">
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Servicio solicitado</span>
+                            <span class="detail-value">{{ solicitud.servicio.nombre }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Solicitante</span>
+                            <span class="detail-value">{{ solicitud.usuario.name }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Correo electrónico</span>
+                            <span class="detail-value mono">{{ solicitud.usuario.email }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Tipo de usuario</span>
+                            <span class="detail-value">{{ solicitud.usuario.tipo_usuario }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Fecha de creación</span>
+                            <span class="detail-value">{{ solicitud.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Costo del servicio</span>
+                            <span class="detail-value">RD$ {{ "{:,.2f}".format(solicitud.servicio.costo|float) }}</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Documentos adjuntos -->
+            <section class="card" style="margin-top:10px;">
+                <header class="card-header">
+                    <h2 class="card-title">📎 Documentos adjuntos</h2>
+                    <span class="card-badge">{{ documentos|length }} documento(s)</span>
+                </header>
+                <div class="card-body">
+                    {% if documentos %}
+                        <ul class="documentos-list">
+                            {% for doc in documentos %}
+                                <li>
+                                    <div>
+                                        📄 {{ doc.nombre_original or doc.tipo }}
+                                        <small style="color:var(--text-soft);">
+                                            ({{ doc.tipo }}, {{ doc.fecha_subida.strftime('%d/%m/%Y %H:%M') }})
+                                        </small>
+                                    </div>
+                                    <a href="{{ url_for('descargar_documento', documento_id=doc.id) }}"
+                                       target="_blank"
+                                       style="font-size:12px; color:#2563eb; text-decoration:none; font-weight:500;">
+                                        Ver
+                                    </a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <div class="alert alert-warning">
+                            ⚠️ No hay documentos adjuntos a esta solicitud.
+                        </div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <!-- Datos del formulario -->
+            <section class="card" style="margin-top:10px;">
+                <header class="card-header">
+                    <h2 class="card-title">📝 Datos del formulario</h2>
+                </header>
+                <div class="card-body">
+                    {% if datos_formulario %}
+                        <div class="datos-formulario">
+                            {% for campo, valor in datos_formulario.items() %}
+                                <div class="campo-dato">
+                                    <label>{{ campo.replace('_', ' ').title() }}</label>
+                                    <div class="valor">{{ valor }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            ℹ️ No hay datos de formulario disponibles.
+                        </div>
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+
+        <!-- Columna derecha: evaluación técnica -->
+        <div>
+            <!-- Formulario de evaluación -->
+            <section class="card">
+                <header class="card-header">
+                    <h2 class="card-title">✅ Evaluación técnica</h2>
+                </header>
+                <div class="card-body">
+                    <form id="formEvaluacion" method="POST" action="{{ url_for('evaluar_upc', solicitud_id=solicitud.id) }}">
+                        <h3 class="section-title">Checklist de requisitos técnicos</h3>
+                        <p class="section-sub">Verifique que cada requisito se cumple según la documentación revisada.</p>
+                        
+                        <div class="checklist-block">
+                            <div class="checklist-item">
+                                <input type="checkbox" name="checklist_documentacion_completa" value="true">
+                                <span>Documentación completa y legible</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox" name="checklist_identificacion_valida" value="true">
+                                <span>Identificación válida y vigente</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox" name="checklist_credenciales_validas" value="true">
+                                <span>Credenciales profesionales verificadas (Exequátur, títulos)</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox" name="checklist_permisos_previos" value="true">
+                                <span>Permisos y habilitaciones previas vigentes</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox" name="checklist_cumplimiento_normativo" value="true">
+                                <span>Cumple con requisitos normativos de sustancias controladas</span>
+                            </div>
+                            <div class="checklist-item">
+                                <input type="checkbox" name="checklist_datos_consistentes" value="true">
+                                <span>Datos del formulario consistentes con documentos</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- Observaciones -->
+            <section class="card" style="margin-top:10px;">
+                <header class="card-header">
+                    <h2 class="card-title">Observaciones técnicas</h2>
+                </header>
+                <div class="card-body">
+                    <p class="section-sub">
+                        Detalle cualquier observación relevante sobre la evaluación técnica.
+                    </p>
+                    <textarea name="observaciones" 
+                              class="textarea-notas"
+                              form="formEvaluacion"
+                              placeholder="Ingrese observaciones técnicas sobre la evaluación..."></textarea>
+                </div>
+            </section>
+
+            <!-- Decisión -->
+            <section class="card" style="margin-top:10px;">
+                <header class="card-header">
+                    <h2 class="card-title">Decisión de evaluación</h2>
+                </header>
+                <div class="card-body">
+                    <div style="display:grid; gap:10px;">
+                        <label class="radio-decision" onclick="seleccionarDecision(this, true)">
+                            <input type="radio" name="aprobado" value="true" form="formEvaluacion" required>
+                            <div>
+                                <div style="font-weight:600; color:#166534; font-size:13px;">
+                                    ✓ Aprobar evaluación técnica
+                                </div>
+                                <div style="font-size:11px; color:#15803d; margin-top:2px;">
+                                    La solicitud cumple todos los requisitos técnicos
+                                </div>
+                            </div>
+                        </label>
+                        
+                        <label class="radio-decision" onclick="seleccionarDecision(this, false)">
+                            <input type="radio" name="aprobado" value="false" form="formEvaluacion" required>
+                            <div>
+                                <div style="font-weight:600; color:#b91c1c; font-size:13px;">
+                                    ✗ Rechazar evaluación técnica
+                                </div>
+                                <div style="font-size:11px; color:#dc2626; margin-top:2px;">
+                                    La solicitud no cumple los requisitos técnicos
+                                </div>
+                            </div>
+                        </label>
+                    </div>
+                    
+                    <div class="actions-row" style="margin-top:12px;">
+                        <button type="submit" form="formEvaluacion" class="btn-primary">
+                            Enviar evaluación
+                        </button>
+                        <button type="button" class="btn-secondary" onclick="window.location.href='{{ url_for('tecnico_dashboard') }}'">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        function seleccionarDecision(label, esAprobado) {
+            // Remover selección de todas las opciones
+            document.querySelectorAll('.radio-decision').forEach(radio => {
+                radio.classList.remove('selected-aprobar');
+                radio.classList.remove('selected-rechazar');
+            });
+            
+            // Marcar la seleccionada
+            if (esAprobado) {
+                label.classList.add('selected-aprobar');
+            } else {
+                label.classList.add('selected-rechazar');
+            }
+        }
+
+        document.getElementById('formEvaluacion').addEventListener('submit', function(e) {
+            const decision = document.querySelector('input[name="aprobado"]:checked');
+            if (!decision) {
+                e.preventDefault();
+                alert('⚠️ Por favor seleccione una decisión (Aprobar o Rechazar)');
+                return;
+            }
+            
+            const accion = decision.value === 'true' ? 'aprobar' : 'rechazar';
+            if (!confirm(`¿Está seguro de ${accion} esta evaluación técnica?\n\nEsta acción no se puede deshacer.`)) {
+                e.preventDefault();
+            }
+        });
+    </script>
+{% endblock %}

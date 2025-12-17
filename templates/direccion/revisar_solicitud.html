@@ -1,0 +1,582 @@
+{% extends "base_app.html" %}
+{% set active_page = 'direccion' %}
+
+{% block title %}Firma Dirección · {{ solicitud.numero_expediente }}{% endblock %}
+
+{% block breadcrumb %}
+    <span class="breadcrumb-main">Dirección</span>
+    <span class="breadcrumb-separator">/</span>
+    <span class="breadcrumb-sub">Firma de solicitud {{ solicitud.numero_expediente }}</span>
+{% endblock %}
+
+{% block content %}
+    <style>
+        .form-wrapper {
+            max-width: 980px;
+            margin: 0 auto;
+        }
+
+        .header-with-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .header-with-actions .page-title {
+            margin-bottom: .25rem;
+        }
+
+        .page-subtitle {
+            margin: 0;
+            color: #4a5568;
+            font-size: .95rem;
+        }
+
+        .form-card {
+            border-radius: 1.2rem;
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.06);
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+
+        .card-body {
+            padding: 1.5rem 1.75rem;
+        }
+
+        .card-footer.form-footer {
+            padding: 1.1rem 1.75rem 1.4rem;
+            background: #f8fafc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .form-section {
+            margin-bottom: 1.75rem;
+        }
+
+        .form-section:last-of-type {
+            margin-bottom: .75rem;
+        }
+
+        .section-title {
+            font-size: 1.05rem;
+            margin-bottom: .25rem;
+            display: flex;
+            align-items: center;
+            gap: .4rem;
+        }
+
+        .section-title::before {
+            content: "";
+            width: 6px;
+            height: 18px;
+            border-radius: 999px;
+            background: linear-gradient(180deg, #0f9b6c, #14b884);
+        }
+
+        .section-description {
+            font-size: .85rem;
+            color: #64748b;
+            margin-bottom: 1rem;
+        }
+
+        .section-divider {
+            border: none;
+            border-top: 1px dashed #e2e8f0;
+            margin: 1.25rem 0 1.5rem;
+        }
+
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1rem 1.5rem;
+        }
+
+        .detail-item {
+            padding: .75rem .9rem;
+            border-radius: .7rem;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+        }
+
+        .detail-label {
+            font-size: .78rem;
+            color: #6b7280;
+            margin-bottom: .2rem;
+            display: block;
+        }
+
+        .detail-value {
+            font-size: .9rem;
+            color: #111827;
+            font-weight: 500;
+        }
+
+        .datos-formulario {
+            background: #f9fafb;
+            border-radius: .7rem;
+            border: 1px solid #e5e7eb;
+            padding: .8rem;
+            max-height: 320px;
+            overflow: auto;
+        }
+
+        .campo-dato {
+            margin-bottom: .6rem;
+            padding: .5rem .7rem;
+            background: #ffffff;
+            border-radius: .6rem;
+            border-left: 3px solid #22c55e;
+            font-size: .82rem;
+        }
+
+        .campo-dato label {
+            font-weight: 600;
+            color: #374151;
+            display: block;
+        }
+
+        .campo-dato .valor {
+            margin-top: .2rem;
+            color: #111827;
+        }
+
+        .badge-success {
+            display: inline-flex;
+            align-items: center;
+            padding: .25rem .7rem;
+            border-radius: 999px;
+            font-size: .78rem;
+            background: #ecfdf5;
+            color: #166534;
+            border: 1px solid #86efac;
+            gap: .3rem;
+        }
+
+        .evaluacion-box {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border: 1px solid #86efac;
+            border-radius: .8rem;
+            padding: 1rem 1.25rem;
+        }
+
+        .evaluacion-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: .7rem;
+        }
+
+        .evaluacion-titulo {
+            font-weight: 600;
+            color: #166534;
+            font-size: .9rem;
+        }
+
+        .evaluacion-fecha {
+            font-size: .78rem;
+            color: #15803d;
+        }
+
+        .evaluacion-tecnico {
+            font-size: .82rem;
+            color: #166534;
+            margin-bottom: .6rem;
+        }
+
+        .evaluacion-observaciones {
+            font-size: .82rem;
+            color: #166534;
+            background: #ffffff;
+            padding: .7rem;
+            border-radius: .6rem;
+            border: 1px solid #bbf7d0;
+        }
+
+        .documentos-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .documentos-list li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: .6rem 0;
+            border-bottom: 1px dashed #e5e7eb;
+            font-size: .82rem;
+        }
+
+        .documentos-list li:last-child {
+            border-bottom: none;
+        }
+
+        .firma-info {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            border: 1px solid #93c5fd;
+            border-radius: .8rem;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .firma-info-title {
+            font-weight: 600;
+            color: #1e40af;
+            font-size: .9rem;
+            margin-bottom: .5rem;
+        }
+
+        .firma-info-text {
+            font-size: .82rem;
+            color: #1e3a8a;
+        }
+
+        .form-control {
+            border-radius: .7rem;
+            border: 1px solid #cbd5e1;
+            padding: .55rem .75rem;
+            font-size: .9rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        textarea.form-control {
+            min-height: 100px;
+            resize: vertical;
+            line-height: 1.4;
+        }
+
+        .form-label {
+            font-size: .85rem;
+            font-weight: 600;
+            color: #1f2933;
+            margin-bottom: .25rem;
+            display: block;
+        }
+
+        .btn-firmar {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+            color: white;
+            border: none;
+            padding: .6rem 1.5rem;
+            border-radius: .7rem;
+            font-size: .9rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: .4rem;
+        }
+
+        .btn-firmar:hover {
+            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+        }
+
+        .btn-rechazar {
+            background: #fef2f2;
+            color: #dc2626;
+            border: 1px solid #fecaca;
+            padding: .6rem 1.5rem;
+            border-radius: .7rem;
+            font-size: .9rem;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .btn-rechazar:hover {
+            background: #fee2e2;
+        }
+
+        .alert-warning {
+            background: #fffbeb;
+            border: 1px solid #fed7aa;
+            color: #92400e;
+            padding: .7rem .9rem;
+            border-radius: .7rem;
+            font-size: .82rem;
+        }
+
+        .modal-rechazo {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #fef2f2;
+            border-radius: .8rem;
+            border: 1px solid #fecaca;
+        }
+
+        .modal-rechazo h4 {
+            margin: 0 0 .7rem;
+            font-size: .9rem;
+            color: #dc2626;
+        }
+
+        @media (max-width: 900px) {
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+            .header-with-actions {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+
+    <div class="form-wrapper">
+        <div class="header-with-actions">
+            <div>
+                <h1 class="page-title">Firma de Certificado</h1>
+                <p class="page-subtitle">
+                    Revise la evaluación técnica y proceda a firmar el certificado.
+                </p>
+            </div>
+            <div class="header-actions">
+                <a href="{{ url_for('direccion_dashboard') }}" class="btn btn-secondary">Volver al panel</a>
+            </div>
+        </div>
+
+        <div class="card form-card">
+            <div class="card-body">
+                {# =================== INFORMACIÓN DE LA SOLICITUD =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Información de la Solicitud</h2>
+                    <p class="section-description">
+                        Expediente: <strong>{{ solicitud.numero_expediente }}</strong>
+                    </p>
+
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="detail-label">Solicitante</span>
+                            <span class="detail-value">{{ solicitud.usuario.name }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Correo</span>
+                            <span class="detail-value">{{ solicitud.usuario.email }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Tipo de servicio</span>
+                            <span class="detail-value">{{ solicitud.servicio.nombre }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Fecha de solicitud</span>
+                            <span class="detail-value">{{ solicitud.fecha_creacion.strftime('%d/%m/%Y') }}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="detail-label">Estado actual</span>
+                            <span class="detail-value">
+                                <span class="badge-success">
+                                    <i class="fas fa-check-circle"></i>
+                                    {{ solicitud.estado.descripcion }}
+                                </span>
+                            </span>
+                        </div>
+                        {% if solicitud.servicio.requiere_dncd %}
+                        <div class="detail-item">
+                            <span class="detail-label">Requiere DNCD</span>
+                            <span class="detail-value" style="color: #dc2626;">
+                                <i class="fas fa-shield-alt"></i> Sí, requiere firma DNCD
+                            </span>
+                        </div>
+                        {% endif %}
+                    </div>
+                </section>
+
+                <hr class="section-divider"/>
+
+                {# =================== DATOS DEL FORMULARIO =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Datos del Formulario</h2>
+                    <p class="section-description">
+                        Información proporcionada por el solicitante.
+                    </p>
+
+                    {% if datos_formulario %}
+                        <div class="datos-formulario">
+                            {% for campo, valor in datos_formulario.items() %}
+                                <div class="campo-dato">
+                                    <label>{{ campo | replace('_', ' ') | title }}</label>
+                                    <div class="valor">{{ valor or '—' }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p style="color: #6b7280; font-size: .82rem;">
+                            No hay datos de formulario registrados.
+                        </p>
+                    {% endif %}
+                </section>
+
+                <hr class="section-divider"/>
+
+                {# =================== EVALUACIÓN TÉCNICA UPC =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Evaluación Técnica UPC</h2>
+                    <p class="section-description">
+                        Resultado de la evaluación técnica realizada por la Unidad de Productos Controlados.
+                    </p>
+
+                    {% if evaluacion %}
+                        <div class="evaluacion-box">
+                            <div class="evaluacion-header">
+                                <span class="evaluacion-titulo">
+                                    <i class="fas fa-clipboard-check"></i> Resultado: Aprobado
+                                </span>
+                                <span class="evaluacion-fecha">
+                                    {{ evaluacion.fecha.strftime('%d/%m/%Y %H:%M') }}
+                                </span>
+                            </div>
+                            <div class="evaluacion-tecnico">
+                                <i class="fas fa-user"></i> Técnico: 
+                                {% if evaluacion.tecnico %}
+                                {{ evaluacion.tecnico.name }}
+                                {% else %}
+                                No especificado
+                                {% endif %}
+                            </div>
+                            {% if evaluacion.observaciones %}
+                                <div class="evaluacion-observaciones">
+                                    <strong>Observaciones del técnico:</strong><br>
+                                    {{ evaluacion.observaciones }}
+                                </div>
+                            {% endif %}
+                            {% if evaluacion.checklist %}
+                                <div style="margin-top: .7rem;">
+                                    <strong style="font-size: .8rem; color: #166534;">Checklist verificado:</strong>
+                                    <ul style="margin: .4rem 0 0 1.2rem; font-size: .78rem; color: #15803d;">
+                                        {% for item, cumple in evaluacion.checklist.items() %}
+                                            <li>
+                                                {% if cumple %}
+                                                    <i class="fas fa-check" style="color:#22c55e;"></i>
+                                                {% else %}
+                                                    <i class="fas fa-times" style="color:#ef4444;"></i>
+                                                {% endif %}
+                                                {{ item | replace('_', ' ') | title }}
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% else %}
+                        <div class="alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            No se encontró información de la evaluación técnica.
+                        </div>
+                    {% endif %}
+                </section>
+
+                <hr class="section-divider"/>
+
+                {# =================== DOCUMENTOS ADJUNTOS =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Documentos Adjuntos</h2>
+                    <p class="section-description">
+                        Documentos de soporte proporcionados por el solicitante ({{ documentos | length }} archivo(s)).
+                    </p>
+
+                    {% if documentos %}
+                        <ul class="documentos-list">
+                            {% for doc in documentos %}
+                                <li>
+                                    <span>
+                                        <i class="fas fa-file-pdf" style="color:#dc2626;"></i>
+                                        {{ doc.nombre_original or doc.nombre_storage }}
+                                    </span>
+                                    <a href="{{ url_for('descargar_documento', documento_id=doc.id) }}"
+                                       class="btn-link" style="font-size:.78rem;">
+                                        <i class="fas fa-download"></i> Descargar
+                                    </a>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p style="color: #6b7280; font-size: .82rem;">
+                            No hay documentos adjuntos.
+                        </p>
+                    {% endif %}
+                </section>
+
+                <hr class="section-divider"/>
+
+                {# =================== FIRMA DEL CERTIFICADO =================== #}
+                <section class="form-section">
+                    <h2 class="section-title">Firma del Certificado</h2>
+                    <p class="section-description">
+                        Proceda a firmar el certificado digitalmente o devuélvalo a UPC si encuentra inconsistencias.
+                    </p>
+
+                    <div class="firma-info">
+                        <div class="firma-info-title">
+                            <i class="fas fa-info-circle"></i> Información de firma
+                        </div>
+                        <div class="firma-info-text">
+                            Al firmar este certificado, se generará un documento oficial con firma digital.
+                            {% if solicitud.servicio.requiere_dncd %}
+                                <br><br>
+                                <strong>Nota:</strong> Este servicio requiere aprobación adicional de la DNCD.
+                                Después de su firma, la solicitud será enviada automáticamente a DNCD para firma final.
+                            {% else %}
+                                <br><br>
+                                El certificado quedará disponible para entrega al solicitante.
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <form id="formFirma" method="POST" action="{{ url_for('firmar_direccion', solicitud_id=solicitud.id) }}">
+                        <div style="margin-bottom: 1rem;">
+                            <label class="form-label">Observaciones (opcional)</label>
+                            <textarea name="observaciones" class="form-control"
+                                      placeholder="Agregue observaciones si lo considera necesario..."></textarea>
+                        </div>
+                    </form>
+
+                    <!-- Modal de rechazo (oculto por defecto) -->
+                    <div id="modalRechazo" class="modal-rechazo" style="display: none;">
+                        <h4>
+                            <i class="fas fa-exclamation-triangle"></i> Devolver solicitud a UPC
+                        </h4>
+                        <form method="POST" action="{{ url_for('direccion_rechazar', solicitud_id=solicitud.id) }}">
+                            <textarea name="motivo_rechazo" class="form-control" required
+                                      placeholder="Indique el motivo por el cual devuelve esta solicitud..."></textarea>
+                            <div style="margin-top: .7rem; display: flex; gap: .6rem; justify-content: flex-end;">
+                                <button type="button" class="btn-secondary" onclick="ocultarRechazo()">
+                                    Cancelar
+                                </button>
+                                <button type="submit" class="btn-rechazar">
+                                    Confirmar devolución
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </section>
+            </div>
+
+            <footer class="card-footer form-footer">
+                <a href="{{ url_for('direccion_dashboard') }}" class="btn btn-secondary">Cancelar</a>
+                <div style="display: flex; gap: .6rem;">
+                    <button type="button" class="btn-rechazar" onclick="mostrarRechazo()">
+                        <i class="fas fa-times"></i> Devolver a UPC
+                    </button>
+                    <button type="submit" form="formFirma" class="btn-firmar">
+                        <i class="fas fa-signature"></i> Firmar Certificado
+                    </button>
+                </div>
+            </footer>
+        </div>
+    </div>
+
+    <script>
+        function mostrarRechazo() {
+            document.getElementById('modalRechazo').style.display = 'block';
+            document.getElementById('formFirma').style.display = 'none';
+        }
+        function ocultarRechazo() {
+            document.getElementById('modalRechazo').style.display = 'none';
+            document.getElementById('formFirma').style.display = 'block';
+        }
+    </script>
+{% endblock %}
