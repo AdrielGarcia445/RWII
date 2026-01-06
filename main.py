@@ -3915,6 +3915,9 @@ if __name__ == '__main__':
             # Inicializar datos base
             print("📝 Inicializando datos base...")
             inicializar_datos_base()
+
+            print(SUPABASE_KEY)
+            print(SUPABASE_URL)
             
         except Exception as e:
             print("⚠️  ERROR DE CONEXIÓN A BASE DE DATOS:")
@@ -3926,7 +3929,10 @@ if __name__ == '__main__':
             print("   4. Intenta ejecutar 'seed_data.sql' manualmente en Supabase")
             print("\n⚠️  El servidor se iniciará SIN base de datos")
             print("   (Las rutas darán error hasta que se corrija la conexión)\n")
-    
+            
+            print(f"SUPABASE_KEY: {SUPABASE_KEY}")
+            print(f"SUPABASE_URL: {SUPABASE_URL}")
+
     print("=" * 60)
     print("✅ Servidor iniciado en http://localhost:5000")
     print("📧 Admin: admin@msp.gob.do | Contraseña: admin123")
