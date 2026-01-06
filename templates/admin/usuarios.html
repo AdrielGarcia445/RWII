@@ -17,6 +17,11 @@
                 Administración de cuentas, roles y estados de acceso al sistema.
             </p>
         </div>
+        <div class="header-actions">
+            <a href="{{ url_for('admin_crear_usuario') }}" class="btn btn-primary">
+                <i class="fas fa-user-plus"></i> Crear Usuario
+            </a>
+        </div>
     </div>
 
     <div class="card">
@@ -77,6 +82,7 @@
                                 <button
                                         class="btn-xs {% if usuario.activo %}btn-danger{% else %}btn-primary{% endif %}"
                                         type="button"
+                                        style="background-color: transparent; border: rgb(159, 159, 159) solid 1px; border-radius: 40px;"
                                         onclick="toggleActivo('{{ usuario.id }}', {{ usuario.activo|tojson }})">
                                     {% if usuario.activo %}Desactivar{% else %}Activar{% endif %}
                                 </button>

@@ -5,13 +5,27 @@ Ministerio de Salud Pública y DNCD
 """
 
 import os
+import secrets
+import smtplib
 import uuid
 from datetime import datetime, timedelta
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from functools import wraps
+# PDF generation and utility imports
+from io import BytesIO
 
 from flask import (Flask, jsonify, redirect, render_template, request, session,
                    url_for)
 from flask_sqlalchemy import SQLAlchemy
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import (Paragraph, SimpleDocTemplate, Spacer, Table,
+                                TableStyle)
 from supabase import Client, create_client
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -42,6 +56,794 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 supabase_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 STORAGE_BUCKET = "documentos"
+
+# Configuración de SMTP para envío de emails
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+SMTP_EMAIL = "gob.dncd@gmail.com"
+SMTP_PASSWORD = "qgsp ahdq xqms isvs"
+
+def generar_pdf_certificacion(solicitud_id):
+    """Genera PDF de certificación final con todos los datos del proceso"""
+    try:
+        solicitud = Solicitud.query.get(solicitud_id)
+        if not solicitud:
+            return None
+        
+        certificado = solicitud.certificado
+        evaluacion = EvaluacionTecnicaUPC.query.filter_by(solicitud_id=solicitud_id).first()
+        
+        # Crear buffer para el PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
+        
+        # Contenedor de elementos
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Estilos personalizados
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#1e3a8a'),
+            spaceAfter=6,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.HexColor('#475569'),
+            spaceAfter=20,
+            alignment=TA_CENTER
+        )
+        
+        section_style = ParagraphStyle(
+            'Section',
+            parent=styles['Heading2'],
+            fontSize=13,
+            textColor=colors.HexColor('#1e293b'),
+            spaceAfter=10,
+            spaceBefore=15,
+            fontName='Helvetica-Bold'
+        )
+        
+        # Encabezado
+        elements.append(Paragraph('CERTIFICACIÓN DE VALIDACIÓN FINAL', title_style))
+        elements.append(Paragraph('Sistema de Gestión de Sustancias Controladas', subtitle_style))
+        elements.append(Paragraph('Ministerio de Salud Pública · DNCD · República Dominicana', subtitle_style))
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Información General
+        elements.append(Paragraph('📋 INFORMACIÓN GENERAL', section_style))
+        data_general = [
+            ['Número de Expediente:', solicitud.numero_expediente],
+            ['Fecha de Solicitud:', solicitud.fecha_creacion.strftime('%d/%m/%Y %H:%M')],
+            ['Servicio Solicitado:', solicitud.servicio.nombre],
+            ['Número de Certificado:', certificado.numero_certificado if certificado else 'N/A'],
+            ['Estado Final:', 'APROBADO - CERTIFICADO EMITIDO'],
+        ]
+        
+        table_general = Table(data_general, colWidths=[2.5*inch, 4*inch])
+        table_general.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1e293b')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+        ]))
+        elements.append(table_general)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Información del Solicitante
+        elements.append(Paragraph('👤 INFORMACIÓN DEL SOLICITANTE', section_style))
+        data_solicitante = [
+            ['Nombre:', solicitud.usuario.name],
+            ['Correo Electrónico:', solicitud.usuario.email],
+            ['Tipo de Usuario:', solicitud.usuario.tipo_usuario],
+            ['Documento de Identidad:', solicitud.usuario.documento_identidad or 'N/A'],
+            ['Teléfono:', solicitud.usuario.telefono or 'N/A'],
+        ]
+        
+        if solicitud.usuario.tipo_usuario == 'EMPRESARIAL':
+            data_solicitante.extend([
+                ['Razón Social:', solicitud.usuario.razon_social or 'N/A'],
+                ['RNC:', solicitud.usuario.rnc or 'N/A'],
+            ])
+        
+        table_solicitante = Table(data_solicitante, colWidths=[2.5*inch, 4*inch])
+        table_solicitante.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1e293b')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+        ]))
+        elements.append(table_solicitante)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Evaluación Técnica
+        if evaluacion:
+            elements.append(Paragraph('🔍 EVALUACIÓN TÉCNICA UPC', section_style))
+            data_evaluacion = [
+                ['Evaluado por:', evaluacion.tecnico.name],
+                ['Fecha de Evaluación:', evaluacion.fecha.strftime('%d/%m/%Y %H:%M')],
+                ['Resultado:', 'APROBADO' if evaluacion.aprobado else 'RECHAZADO'],
+                ['Observaciones:', evaluacion.observaciones or 'Sin observaciones'],
+            ]
+            
+            table_evaluacion = Table(data_evaluacion, colWidths=[2.5*inch, 4*inch])
+            table_evaluacion.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1e293b')),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+            ]))
+            elements.append(table_evaluacion)
+            elements.append(Spacer(1, 0.2*inch))
+        
+        # Firmas Digitales
+        if certificado:
+            elements.append(Paragraph('✍️ FIRMAS DIGITALES', section_style))
+            data_firmas = [
+                ['Firmante Dirección:', certificado.firmante_direccion.name],
+                ['Fecha Firma Dirección:', certificado.fecha_emision.strftime('%d/%m/%Y %H:%M')],
+            ]
+            
+            if certificado.firmante_dncd:
+                data_firmas.extend([
+                    ['Firmante DNCD:', certificado.firmante_dncd.name],
+                    ['Fecha Firma DNCD:', certificado.fecha_firma_dncd.strftime('%d/%m/%Y %H:%M') if certificado.fecha_firma_dncd else 'N/A'],
+                ])
+            
+            table_firmas = Table(data_firmas, colWidths=[2.5*inch, 4*inch])
+            table_firmas.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1e293b')),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+            ]))
+            elements.append(table_firmas)
+            elements.append(Spacer(1, 0.3*inch))
+        
+        # Validación Final
+        elements.append(Paragraph('✅ VALIDACIÓN FINAL', section_style))
+        validation_text = f"""
+        Este documento certifica que la solicitud <b>{solicitud.numero_expediente}</b> ha completado 
+        exitosamente todos los pasos del proceso de validación establecido por el Ministerio de Salud 
+        Pública y la DNCD. El certificado <b>{certificado.numero_certificado if certificado else 'N/A'}</b> 
+        ha sido emitido y está listo para su entrega.
+        """
+        elements.append(Paragraph(validation_text, styles['Normal']))
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Pie de página
+        footer_style = ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor=colors.HexColor('#94a3b8'),
+            alignment=TA_CENTER
+        )
+        elements.append(Spacer(1, 0.5*inch))
+        elements.append(Paragraph('_' * 80, footer_style))
+        elements.append(Paragraph(
+            f'Documento generado electrónicamente el {datetime.now().strftime("%d/%m/%Y a las %H:%M")}',
+            footer_style
+        ))
+        elements.append(Paragraph(
+            'Ministerio de Salud Pública · DNCD · República Dominicana',
+            footer_style
+        ))
+        
+        # Construir PDF
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
+        
+    except Exception as e:
+        print(f"❌ Error al generar PDF: {str(e)}")
+        return None
+
+def enviar_email_certificacion_final(solicitud_id):
+    """Envía email con PDF de certificación final al completar el proceso"""
+    try:
+        solicitud = Solicitud.query.get(solicitud_id)
+        if not solicitud:
+            return False
+        
+        certificado = solicitud.certificado
+        destinatario = solicitud.usuario.email
+        nombre_usuario = solicitud.usuario.name
+        
+        # Generar PDF
+        pdf_buffer = generar_pdf_certificacion(solicitud_id)
+        if not pdf_buffer:
+            return False
+        
+        # Crear mensaje
+        mensaje = MIMEMultipart('mixed')
+        mensaje['Subject'] = f'Certificado Aprobado - {certificado.numero_certificado if certificado else solicitud.numero_expediente}'
+        mensaje['From'] = f'Sistema DNCD <{SMTP_EMAIL}>'
+        mensaje['To'] = destinatario
+        
+        # HTML del email
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+            <table width="100%" cellpadding="0" cellspacing="0" style="min-height: 100vh; padding: 40px 20px;">
+                <tr>
+                    <td align="center">
+                        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.3);">
+                            <!-- Header -->
+                            <tr>
+                                <td style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 40px 30px; text-align: center;">
+                                    <div style="width: 80px; height: 80px; margin: 0 auto 15px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                                        <span style="font-size: 40px;">🎉</span>
+                                    </div>
+                                    <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">¡Certificado Aprobado!</h1>
+                                    <p style="margin: 10px 0 0; color: rgba(255,255,255,0.95); font-size: 15px;">Proceso Completado Exitosamente</p>
+                                </td>
+                            </tr>
+                            
+                            <!-- Body -->
+                            <tr>
+                                <td style="padding: 40px 30px;">
+                                    <h2 style="margin: 0 0 15px; color: #1e293b; font-size: 20px; font-weight: 600;">Estimado(a) {nombre_usuario},</h2>
+                                    
+                                    <p style="margin: 0 0 20px; color: #475569; font-size: 15px; line-height: 1.6;">
+                                        Nos complace informarle que su solicitud <strong>{solicitud.numero_expediente}</strong> 
+                                        ha sido <strong>aprobada exitosamente</strong> y su certificado ha sido emitido.
+                                    </p>
+                                    
+                                    <div style="background: linear-gradient(135deg, #dbeafe 0%, #dcfce7 100%); border-left: 4px solid #22c55e; border-radius: 10px; padding: 20px; margin: 25px 0;">
+                                        <table width="100%" cellpadding="5" cellspacing="0">
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px; font-weight: 600;">Número de Certificado:</td>
+                                                <td style="color: #1e293b; font-size: 14px; font-weight: 700; text-align: right;">{certificado.numero_certificado if certificado else 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px; font-weight: 600;">Servicio:</td>
+                                                <td style="color: #1e293b; font-size: 13px; text-align: right;">{solicitud.servicio.nombre}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px; font-weight: 600;">Fecha de Emisión:</td>
+                                                <td style="color: #1e293b; font-size: 13px; text-align: right;">{certificado.fecha_emision.strftime('%d/%m/%Y') if certificado else 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px; font-weight: 600;">Válido hasta:</td>
+                                                <td style="color: #1e293b; font-size: 13px; text-align: right;">{certificado.fecha_vencimiento.strftime('%d/%m/%Y') if certificado else 'N/A'}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    
+                                    <p style="margin: 25px 0 15px; color: #475569; font-size: 15px; line-height: 1.6;">
+                                        Adjunto a este correo encontrará el <strong>Certificado de Validación Final</strong> en formato PDF, 
+                                        el cual contiene todos los detalles del proceso de evaluación y aprobación.
+                                    </p>
+                                    
+                                    <div style="background: #fff7ed; border-left: 4px solid #f59e0b; border-radius: 10px; padding: 15px; margin: 20px 0;">
+                                        <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.5;">
+                                            <strong>📌 Próximos pasos:</strong><br>
+                                            Diríjase a la Ventanilla Única de Servicios del Ministerio de Salud Pública 
+                                            para retirar su certificado físico oficial.
+                                        </p>
+                                    </div>
+                                </td>
+                            </tr>
+                            
+                            <!-- Footer -->
+                            <tr>
+                                <td style="background: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+                                    <p style="margin: 0 0 10px; color: #64748b; font-size: 13px;">
+                                        <strong>Ministerio de Salud Pública</strong> • <strong>DNCD</strong> • <strong>VUS</strong>
+                                    </p>
+                                    <p style="margin: 0; color: #94a3b8; font-size: 12px;">
+                                        República Dominicana · Sistema de Sustancias Controladas
+                                    </p>
+                                    <p style="margin: 15px 0 0; color: #cbd5e1; font-size: 11px;">
+                                        Este es un correo automático, por favor no responder.
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        
+        # Adjuntar HTML
+        parte_html = MIMEText(html, 'html')
+        mensaje.attach(parte_html)
+        
+        # Adjuntar PDF
+        pdf_attachment = MIMEApplication(pdf_buffer.read(), _subtype='pdf')
+        pdf_filename = f'Certificacion_{certificado.numero_certificado if certificado else solicitud.numero_expediente}.pdf'
+        pdf_attachment.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
+        mensaje.attach(pdf_attachment)
+        
+        # Enviar email
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as servidor:
+            servidor.starttls()
+            servidor.login(SMTP_EMAIL, SMTP_PASSWORD)
+            servidor.send_message(mensaje)
+        
+        print(f"✉️ Email de certificación final enviado a: {destinatario}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al enviar email de certificación: {str(e)}")
+        return False
+
+def enviar_email_verificacion(destinatario, nombre_usuario, token_verificacion):
+    """Envía email de verificación con diseño profesional"""
+    try:
+        # Crear mensaje
+        mensaje = MIMEMultipart('alternative')
+        mensaje['Subject'] = 'Verifica tu cuenta - Sistema de Sustancias Controladas'
+        mensaje['From'] = f'Sistema DNCD <{SMTP_EMAIL}>'
+        mensaje['To'] = destinatario
+        
+        # URL de verificación
+        url_verificacion = url_for('verificar_email', token=token_verificacion, _external=True)
+        
+        # HTML del email
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Verificación de Cuenta</title>
+        </head>
+        <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+            <table width="100%" cellpadding="0" cellspacing="0" style="min-height: 100vh; padding: 40px 20px;">
+                <tr>
+                    <td align="center">
+                        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.3);">
+                            <!-- Header -->
+                            <tr>
+                                <td style="background: linear-gradient(135deg, #1e3a8a 0%, #22c55e 100%); padding: 40px 30px; text-align: center;">
+                                    <div style="width: 70px; height: 70px; margin: 0 auto 15px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                                        <span style="font-size: 32px; font-weight: bold; color: #22c55e;">✓</span>
+                                    </div>
+                                    <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">¡Bienvenido(a)!</h1>
+                                    <p style="margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 15px;">Sistema de Sustancias Controladas</p>
+                                </td>
+                            </tr>
+                            
+                            <!-- Body -->
+                            <tr>
+                                <td style="padding: 40px 30px;">
+                                    <h2 style="margin: 0 0 20px; color: #1e293b; font-size: 22px; font-weight: 600;">Hola, {nombre_usuario}</h2>
+                                    
+                                    <p style="margin: 0 0 20px; color: #475569; font-size: 15px; line-height: 1.6;">
+                                        Gracias por registrarte en el <strong>Sistema de Gestión de Sustancias Controladas</strong> 
+                                        del Ministerio de Salud Pública y la DNCD.
+                                    </p>
+                                    
+                                    <p style="margin: 0 0 30px; color: #475569; font-size: 15px; line-height: 1.6;">
+                                        Para completar tu registro y acceder a tu cuenta, por favor verifica tu correo electrónico 
+                                        haciendo clic en el botón de abajo:
+                                    </p>
+                                    
+                                    <!-- Botón -->
+                                    <table width="100%" cellpadding="0" cellspacing="0">
+                                        <tr>
+                                            <td align="center" style="padding: 10px 0;">
+                                                <a href="{url_verificacion}" style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: white; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px; box-shadow: 0 8px 20px rgba(34, 197, 94, 0.4); transition: transform 0.2s;">
+                                                    Verificar mi cuenta
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                    
+                                    <p style="margin: 30px 0 0; padding: 20px; background: #f1f5f9; border-left: 4px solid #3b82f6; border-radius: 8px; color: #475569; font-size: 13px; line-height: 1.5;">
+                                        <strong style="color: #1e293b;">💡 Nota importante:</strong><br>
+                                        Si no puedes hacer clic en el botón, copia y pega este enlace en tu navegador:<br>
+                                        <a href="{url_verificacion}" style="color: #3b82f6; word-break: break-all;">{url_verificacion}</a>
+                                    </p>
+                                </td>
+                            </tr>
+                            
+                            <!-- Footer -->
+                            <tr>
+                                <td style="background: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+                                    <p style="margin: 0 0 10px; color: #64748b; font-size: 13px;">
+                                        <strong>Ministerio de Salud Pública</strong> • <strong>DNCD</strong> • <strong>VUS</strong>
+                                    </p>
+                                    <p style="margin: 0; color: #94a3b8; font-size: 12px;">
+                                        República Dominicana • Sistema de Sustancias Controladas
+                                    </p>
+                                    <p style="margin: 15px 0 0; color: #cbd5e1; font-size: 11px;">
+                                        Este es un correo automático, por favor no responder.
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        
+        # Adjuntar HTML
+        parte_html = MIMEText(html, 'html')
+        mensaje.attach(parte_html)
+        
+        # Enviar email
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as servidor:
+            servidor.starttls()
+            servidor.login(SMTP_EMAIL, SMTP_PASSWORD)
+            servidor.send_message(mensaje)
+        
+        print(f"✉️ Email de verificación enviado a: {destinatario}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al enviar email: {str(e)}")
+        return False
+
+def generar_pdf_certificacion(solicitud_id):
+    """Genera PDF de certificación final con todos los datos del proceso"""
+    try:
+        solicitud = Solicitud.query.get(solicitud_id)
+        if not solicitud:
+            return None
+        
+        certificado = solicitud.certificado
+        evaluacion = EvaluacionTecnicaUPC.query.filter_by(solicitud_id=solicitud_id).first()
+        
+        # Crear buffer para el PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=50, leftMargin=50, topMargin=50, bottomMargin=50)
+        
+        # Contenedor de elementos
+        elements = []
+        styles = getSampleStyleSheet()
+        
+        # Estilos personalizados
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            textColor=colors.HexColor('#1e3a8a'),
+            spaceAfter=6,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        subtitle_style = ParagraphStyle(
+            'CustomSubtitle',
+            parent=styles['Normal'],
+            fontSize=11,
+            textColor=colors.HexColor('#475569'),
+            spaceAfter=20,
+            alignment=TA_CENTER
+        )
+        
+        section_style = ParagraphStyle(
+            'Section',
+            parent=styles['Heading2'],
+            fontSize=13,
+            textColor=colors.HexColor('#1e293b'),
+            spaceAfter=10,
+            spaceBefore=15,
+            fontName='Helvetica-Bold'
+        )
+        
+        # Encabezado
+        elements.append(Paragraph('CERTIFICACIÓN DE VALIDACIÓN FINAL', title_style))
+        elements.append(Paragraph('Sistema de Gestión de Sustancias Controladas', subtitle_style))
+        elements.append(Paragraph('Ministerio de Salud Pública · DNCD · República Dominicana', subtitle_style))
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Información General
+        elements.append(Paragraph('📋 INFORMACIÓN GENERAL', section_style))
+        data_general = [
+            ['Número de Expediente:', solicitud.numero_expediente],
+            ['Fecha de Solicitud:', solicitud.fecha_creacion.strftime('%d/%m/%Y %H:%M')],
+            ['Servicio Solicitado:', solicitud.servicio.nombre],
+            ['Número de Certificado:', certificado.numero_certificado if certificado else 'N/A'],
+            ['Estado Final:', 'APROBADO - CERTIFICADO EMITIDO'],
+        ]
+        
+        table_general = Table(data_general, colWidths=[2.5*inch, 4*inch])
+        table_general.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1e293b')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+        ]))
+        elements.append(table_general)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Información del Solicitante
+        elements.append(Paragraph('👤 INFORMACIÓN DEL SOLICITANTE', section_style))
+        data_solicitante = [
+            ['Nombre:', solicitud.usuario.name],
+            ['Correo Electrónico:', solicitud.usuario.email],
+            ['Tipo de Usuario:', solicitud.usuario.tipo_usuario],
+            ['Documento de Identidad:', solicitud.usuario.documento_identidad or 'N/A'],
+            ['Teléfono:', solicitud.usuario.telefono or 'N/A'],
+        ]
+        
+        if solicitud.usuario.tipo_usuario == 'EMPRESARIAL':
+            data_solicitante.extend([
+                ['Razón Social:', solicitud.usuario.razon_social or 'N/A'],
+                ['RNC:', solicitud.usuario.rnc or 'N/A'],
+            ])
+        
+        table_solicitante = Table(data_solicitante, colWidths=[2.5*inch, 4*inch])
+        table_solicitante.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1e293b')),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+        ]))
+        elements.append(table_solicitante)
+        elements.append(Spacer(1, 0.2*inch))
+        
+        # Evaluación Técnica
+        if evaluacion:
+            elements.append(Paragraph('🔍 EVALUACIÓN TÉCNICA UPC', section_style))
+            data_evaluacion = [
+                ['Evaluado por:', evaluacion.tecnico.name],
+                ['Fecha de Evaluación:', evaluacion.fecha.strftime('%d/%m/%Y %H:%M')],
+                ['Resultado:', 'APROBADO' if evaluacion.aprobado else 'RECHAZADO'],
+                ['Observaciones:', evaluacion.observaciones or 'Sin observaciones'],
+            ]
+            
+            table_evaluacion = Table(data_evaluacion, colWidths=[2.5*inch, 4*inch])
+            table_evaluacion.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1e293b')),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+            ]))
+            elements.append(table_evaluacion)
+            elements.append(Spacer(1, 0.2*inch))
+        
+        # Firmas Digitales
+        if certificado:
+            elements.append(Paragraph('✍️ FIRMAS DIGITALES', section_style))
+            data_firmas = [
+                ['Firmante Dirección:', certificado.firmante_direccion.name],
+                ['Fecha Firma Dirección:', certificado.fecha_emision.strftime('%d/%m/%Y %H:%M')],
+            ]
+            
+            if certificado.firmante_dncd:
+                data_firmas.extend([
+                    ['Firmante DNCD:', certificado.firmante_dncd.name],
+                    ['Fecha Firma DNCD:', certificado.fecha_firma_dncd.strftime('%d/%m/%Y %H:%M') if certificado.fecha_firma_dncd else 'N/A'],
+                ])
+            
+            table_firmas = Table(data_firmas, colWidths=[2.5*inch, 4*inch])
+            table_firmas.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.HexColor('#1e293b')),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+                ('TOPPADDING', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#cbd5e1'))
+            ]))
+            elements.append(table_firmas)
+            elements.append(Spacer(1, 0.3*inch))
+        
+        # Validación Final
+        elements.append(Paragraph('✅ VALIDACIÓN FINAL', section_style))
+        validation_text = f"""
+        Este documento certifica que la solicitud <b>{solicitud.numero_expediente}</b> ha completado 
+        exitosamente todos los pasos del proceso de validación establecido por el Ministerio de Salud 
+        Pública y la DNCD. El certificado <b>{certificado.numero_certificado if certificado else 'N/A'}</b> 
+        ha sido emitido y está listo para su entrega.
+        """
+        elements.append(Paragraph(validation_text, styles['Normal']))
+        elements.append(Spacer(1, 0.3*inch))
+        
+        # Pie de página
+        footer_style = ParagraphStyle(
+            'Footer',
+            parent=styles['Normal'],
+            fontSize=8,
+            textColor=colors.HexColor('#94a3b8'),
+            alignment=TA_CENTER
+        )
+        elements.append(Spacer(1, 0.5*inch))
+        elements.append(Paragraph('_' * 80, footer_style))
+        elements.append(Paragraph(
+            f'Documento generado electrónicamente el {datetime.now().strftime("%d/%m/%Y a las %H:%M")}',
+            footer_style
+        ))
+        elements.append(Paragraph(
+            'Ministerio de Salud Pública · DNCD · República Dominicana',
+            footer_style
+        ))
+        
+        # Construir PDF
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
+        
+    except Exception as e:
+        print(f"❌ Error al generar PDF: {str(e)}")
+        return None
+
+def enviar_email_certificacion_final(solicitud_id):
+    """Envía email con PDF de certificación final al completar el proceso"""
+    try:
+        solicitud = Solicitud.query.get(solicitud_id)
+        if not solicitud:
+            return False
+        
+        certificado = solicitud.certificado
+        destinatario = solicitud.usuario.email
+        nombre_usuario = solicitud.usuario.name
+        
+        # Generar PDF
+        pdf_buffer = generar_pdf_certificacion(solicitud_id)
+        if not pdf_buffer:
+            return False
+        
+        # Crear mensaje
+        mensaje = MIMEMultipart('mixed')
+        mensaje['Subject'] = f'Certificado Aprobado - {certificado.numero_certificado if certificado else solicitud.numero_expediente}'
+        mensaje['From'] = f'Sistema DNCD <{SMTP_EMAIL}>'
+        mensaje['To'] = destinatario
+        
+        # HTML del email
+        html = f"""
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);">
+            <table width="100%" cellpadding="0" cellspacing="0" style="min-height: 100vh; padding: 40px 20px;">
+                <tr>
+                    <td align="center">
+                        <table width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.3);">
+                            <!-- Header -->
+                            <tr>
+                                <td style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 40px 30px; text-align: center;">
+                                    <div style="width: 80px; height: 80px; margin: 0 auto 15px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                                        <span style="font-size: 40px;">🎉</span>
+                                    </div>
+                                    <h1 style="margin: 0; color: white; font-size: 28px; font-weight: 700;">¡Certificado Aprobado!</h1>
+                                    <p style="margin: 10px 0 0; color: rgba(255,255,255,0.95); font-size: 15px;">Proceso Completado Exitosamente</p>
+                                </td>
+                            </tr>
+                            
+                            <!-- Body -->
+                            <tr>
+                                <td style="padding: 40px 30px;">
+                                    <h2 style="margin: 0 0 15px; color: #1e293b; font-size: 20px; font-weight: 600;">Estimado(a) {nombre_usuario},</h2>
+                                    
+                                    <p style="margin: 0 0 20px; color: #475569; font-size: 15px; line-height: 1.6;">
+                                        Nos complace informarle que su solicitud <strong>{solicitud.numero_expediente}</strong> 
+                                        ha sido <strong>aprobada exitosamente</strong> y su certificado ha sido emitido.
+                                    </p>
+                                    
+                                    <div style="background: linear-gradient(135deg, #dbeafe 0%, #dcfce7 100%); border-left: 4px solid #22c55e; border-radius: 10px; padding: 20px; margin: 25px 0;">
+                                        <table width="100%" cellpadding="5" cellspacing="0">
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px; font-weight: 600;">Número de Certificado:</td>
+                                                <td style="color: #1e293b; font-size: 14px; font-weight: 700; text-align: right;">{certificado.numero_certificado if certificado else 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px; font-weight: 600;">Servicio:</td>
+                                                <td style="color: #1e293b; font-size: 13px; text-align: right;">{solicitud.servicio.nombre}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px; font-weight: 600;">Fecha de Emisión:</td>
+                                                <td style="color: #1e293b; font-size: 13px; text-align: right;">{certificado.fecha_emision.strftime('%d/%m/%Y') if certificado else 'N/A'}</td>
+                                            </tr>
+                                            <tr>
+                                                <td style="color: #64748b; font-size: 13px; font-weight: 600;">Válido hasta:</td>
+                                                <td style="color: #1e293b; font-size: 13px; text-align: right;">{certificado.fecha_vencimiento.strftime('%d/%m/%Y') if certificado else 'N/A'}</td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                    
+                                    <p style="margin: 25px 0 15px; color: #475569; font-size: 15px; line-height: 1.6;">
+                                        Adjunto a este correo encontrará el <strong>Certificado de Validación Final</strong> en formato PDF, 
+                                        el cual contiene todos los detalles del proceso de evaluación y aprobación.
+                                    </p>
+                                    
+                                    <div style="background: #fff7ed; border-left: 4px solid #f59e0b; border-radius: 10px; padding: 15px; margin: 20px 0;">
+                                        <p style="margin: 0; color: #92400e; font-size: 13px; line-height: 1.5;">
+                                            <strong>📌 Próximos pasos:</strong><br>
+                                            Diríjase a la Ventanilla Única de Servicios del Ministerio de Salud Pública 
+                                            para retirar su certificado físico oficial.
+                                        </p>
+                                    </div>
+                                </td>
+                            </tr>
+                            
+                            <!-- Footer -->
+                            <tr>
+                                <td style="background: #f8fafc; padding: 30px; text-align: center; border-top: 1px solid #e2e8f0;">
+                                    <p style="margin: 0 0 10px; color: #64748b; font-size: 13px;">
+                                        <strong>Ministerio de Salud Pública</strong> • <strong>DNCD</strong> • <strong>VUS</strong>
+                                    </p>
+                                    <p style="margin: 0; color: #94a3b8; font-size: 12px;">
+                                        República Dominicana · Sistema de Sustancias Controladas
+                                    </p>
+                                    <p style="margin: 15px 0 0; color: #cbd5e1; font-size: 11px;">
+                                        Este es un correo automático, por favor no responder.
+                                    </p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
+        </body>
+        </html>
+        """
+        
+        # Adjuntar HTML
+        parte_html = MIMEText(html, 'html')
+        mensaje.attach(parte_html)
+        
+        # Adjuntar PDF
+        pdf_attachment = MIMEApplication(pdf_buffer.read(), _subtype='pdf')
+        pdf_filename = f'Certificacion_{certificado.numero_certificado if certificado else solicitud.numero_expediente}.pdf'
+        pdf_attachment.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
+        mensaje.attach(pdf_attachment)
+        
+        # Enviar email
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as servidor:
+            servidor.starttls()
+            servidor.login(SMTP_EMAIL, SMTP_PASSWORD)
+            servidor.send_message(mensaje)
+        
+        print(f"✉️ Email de certificación final enviado a: {destinatario}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error al enviar email de certificación: {str(e)}")
+        return False
 
 def inicializar_bucket_storage():
     """Crear bucket de Supabase Storage si no existe"""
@@ -120,6 +922,9 @@ class Usuario(db.Model):
     rnc = db.Column(db.String)
     representante_legal = db.Column(db.String)
     activo = db.Column(db.Boolean, default=True)
+    email_verificado = db.Column(db.Boolean, default=False)
+    token_verificacion = db.Column(db.String, unique=True)
+    fecha_token_verificacion = db.Column(db.DateTime)
     fecha_registro = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     
     rol = db.relationship('Rol', backref='usuarios')
@@ -754,6 +1559,13 @@ def firmar_documento_workflow(workflow_id, user_id, signature_type='ELECTRONIC')
                     workflow.solicitud_id
                 )
                 print(f"      ✓ Notificación enviada al usuario {solicitud.usuario_id}")
+                
+                # Enviar email con PDF de certificación final
+                print(f"\n   [3.7] Enviando email de certificación final...")
+                if enviar_email_certificacion_final(workflow.solicitud_id):
+                    print(f"      ✓ Email de certificación enviado exitosamente")
+                else:
+                    print(f"      ⚠️ No se pudo enviar el email de certificación")
             
             # Auditoría: workflow completado
             audit_log = SignatureAuditLog(
@@ -806,9 +1618,21 @@ def login():
         email = data.get('email')
         password = data.get('password')
         
-        usuario = Usuario.query.filter_by(email=email, activo=True).first()
+        usuario = Usuario.query.filter_by(email=email).first()
         
         if usuario and check_password_hash(usuario.password_hash, password):
+            # Verificar si el email está verificado
+            if not usuario.email_verificado and usuario.rol_codigo == 'USUARIO':
+                if request.is_json:
+                    return jsonify({'error': 'Debes verificar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada.'}), 401
+                return render_template('login.html', error='Debes verificar tu correo electrónico antes de iniciar sesión. Revisa tu bandeja de entrada.')
+            
+            # Verificar si el usuario está activo
+            if not usuario.activo:
+                if request.is_json:
+                    return jsonify({'error': 'Tu cuenta está inactiva. Contacta con el administrador.'}), 401
+                return render_template('login.html', error='Tu cuenta está inactiva. Contacta con el administrador.')
+            
             session['user_id'] = usuario.id
             session['name'] = usuario.name
             session['rol_codigo'] = usuario.rol_codigo
@@ -843,6 +1667,9 @@ def register():
                 return jsonify({'error': 'El email ya está registrado'}), 400
             return render_template('register.html', error='El email ya está registrado')
         
+        # Generar token de verificación
+        token_verificacion = secrets.token_urlsafe(32)
+        
         # Crear nuevo usuario
         usuario = Usuario(
             name=data.get('name'),
@@ -855,19 +1682,56 @@ def register():
             direccion=data.get('direccion'),
             razon_social=data.get('razon_social'),
             rnc=data.get('rnc'),
-            representante_legal=data.get('representante_legal')
+            representante_legal=data.get('representante_legal'),
+            email_verificado=False,
+            token_verificacion=token_verificacion,
+            fecha_token_verificacion=datetime.utcnow(),
+            activo=False  # Usuario inactivo hasta que verifique el email
         )
         
         db.session.add(usuario)
         db.session.commit()
         
-        registrar_auditoria('REGISTRO_USUARIO', detalles=f'Nuevo usuario registrado: {usuario.email}')
+        # Enviar email de verificación
+        enviar_email_verificacion(usuario.email, usuario.name, token_verificacion)
+        
+        registrar_auditoria('REGISTRO_USUARIO', detalles=f'Nuevo usuario registrado: {usuario.email} - Pendiente de verificación')
         
         if request.is_json:
-            return jsonify({'success': True, 'message': 'Usuario registrado exitosamente'})
-        return redirect(url_for('login'))
+            return jsonify({'success': True, 'message': 'Registro exitoso. Revisa tu correo para verificar tu cuenta.'})
+        return render_template('register.html', success=True, email=usuario.email)
     
     return render_template('register.html')
+
+@app.route('/verificar-email/<token>')
+def verificar_email(token):
+    """Verifica el email del usuario y lo loguea automáticamente"""
+    usuario = Usuario.query.filter_by(token_verificacion=token).first()
+    
+    if not usuario:
+        return render_template('login.html', error='Token de verificación inválido')
+    
+    # Verificar que el token no haya expirado (24 horas)
+    if usuario.fecha_token_verificacion:
+        tiempo_transcurrido = datetime.utcnow() - usuario.fecha_token_verificacion
+        if tiempo_transcurrido > timedelta(hours=24):
+            return render_template('login.html', error='El token de verificación ha expirado. Por favor, contacta con soporte.')
+    
+    # Activar usuario y marcar email como verificado
+    usuario.email_verificado = True
+    usuario.activo = True
+    usuario.token_verificacion = None  # Limpiar el token
+    db.session.commit()
+    
+    # Loguear automáticamente al usuario
+    session['user_id'] = usuario.id
+    session['name'] = usuario.name
+    session['rol_codigo'] = usuario.rol_codigo
+    session['tipo_usuario'] = usuario.tipo_usuario
+    
+    registrar_auditoria('VERIFICACION_EMAIL', detalles=f'Usuario {usuario.email} verificó su email y accedió al sistema')
+    
+    return redirect(url_for('dashboard'))
 
 # ============================================================================
 # RUTAS DEL DASHBOARD
@@ -1896,7 +2760,80 @@ def api_estadisticas():
 def admin_usuarios():
     """Panel de administración de usuarios"""
     usuarios = Usuario.query.order_by(Usuario.fecha_registro.desc()).all()
-    return render_template('admin/usuarios.html', usuarios=usuarios)
+    roles = Rol.query.all()
+    return render_template('admin/usuarios.html', usuarios=usuarios, roles=roles)
+
+@app.route('/admin/usuarios/crear', methods=['GET', 'POST'])
+@login_required
+@role_required('ADMIN')
+def admin_crear_usuario():
+    """Crear nuevo usuario desde administración"""
+    if request.method == 'POST':
+        try:
+            # Obtener datos del formulario
+            name = request.form.get('name')
+            email = request.form.get('email')
+            password = request.form.get('password')
+            rol_codigo = request.form.get('rol_codigo')
+            tipo_usuario = request.form.get('tipo_usuario', 'PROFESIONAL')
+            documento_identidad = request.form.get('documento_identidad')
+            telefono = request.form.get('telefono')
+            direccion = request.form.get('direccion')
+            razon_social = request.form.get('razon_social')
+            rnc = request.form.get('rnc')
+            representante_legal = request.form.get('representante_legal')
+            
+            # Validaciones básicas
+            if not all([name, email, password, rol_codigo]):
+                return jsonify({'error': 'Todos los campos obligatorios deben ser completados'}), 400
+            
+            # Verificar que el email no exista
+            if Usuario.query.filter_by(email=email).first():
+                return jsonify({'error': 'El correo electrónico ya está registrado'}), 400
+            
+            # Verificar que el rol exista
+            rol = Rol.query.filter_by(codigo=rol_codigo).first()
+            if not rol:
+                return jsonify({'error': 'El rol seleccionado no es válido'}), 400
+            
+            # Crear el usuario
+            nuevo_usuario = Usuario(
+                id=str(uuid.uuid4()),
+                name=name,
+                email=email,
+                password_hash=generate_password_hash(password),
+                rol_codigo=rol_codigo,
+                tipo_usuario=tipo_usuario,
+                documento_identidad=documento_identidad,
+                telefono=telefono,
+                direccion=direccion,
+                razon_social=razon_social,
+                rnc=rnc,
+                representante_legal=representante_legal,
+                activo=True,
+                email_verificado=True,  # Usuarios creados por admin están pre-verificados
+                fecha_registro=datetime.utcnow()
+            )
+            
+            db.session.add(nuevo_usuario)
+            db.session.commit()
+            
+            # Registrar en auditoría
+            registrar_auditoria(
+                'CREAR_USUARIO',
+                detalles=f'Usuario {email} creado con rol {rol_codigo} por administrador'
+            )
+            
+            return redirect(url_for('admin_usuarios'))
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error al crear usuario: {str(e)}")
+            return jsonify({'error': f'Error al crear usuario: {str(e)}'}), 500
+    
+    # GET - Mostrar formulario
+    roles = Rol.query.all()
+    return render_template('admin/crear_usuario.html', roles=roles)
 
 @app.route('/admin/usuarios/<usuario_id>/activar', methods=['POST'])
 @login_required
@@ -2003,6 +2940,53 @@ def admin_auditoria():
 # ============================================================================
 # FUNCIONES DE INICIALIZACIÓN
 # ============================================================================
+
+def ejecutar_migracion_email_verificacion():
+    """Ejecuta la migración para agregar campos de verificación de email"""
+    try:
+        # Verificar si las columnas ya existen
+        from sqlalchemy import inspect
+        inspector = inspect(db.engine)
+        columns = [col['name'] for col in inspector.get_columns('usuarios')]
+        
+        if 'email_verificado' in columns:
+            print("✅ Las columnas de verificación de email ya existen")
+            return True
+        
+        print("🔄 Ejecutando migración de verificación de email...")
+        
+        # Ejecutar migración
+        with db.engine.connect() as conn:
+            # Agregar columnas
+            conn.execute(db.text("""
+                ALTER TABLE usuarios 
+                ADD COLUMN IF NOT EXISTS email_verificado BOOLEAN DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS token_verificacion VARCHAR(255) UNIQUE,
+                ADD COLUMN IF NOT EXISTS fecha_token_verificacion TIMESTAMP;
+            """))
+            
+            # Marcar como verificados a usuarios que no sean USUARIO
+            conn.execute(db.text("""
+                UPDATE usuarios 
+                SET email_verificado = TRUE 
+                WHERE rol_codigo != 'USUARIO';
+            """))
+            
+            # Marcar como verificados a usuarios admin
+            conn.execute(db.text("""
+                UPDATE usuarios 
+                SET email_verificado = TRUE, activo = TRUE 
+                WHERE rol_codigo = 'ADMIN';
+            """))
+            
+            conn.commit()
+        
+        print("✅ Migración de verificación de email completada exitosamente")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error en migración de verificación de email: {str(e)}")
+        return False
 
 def inicializar_datos_base():
     """Inicializa roles y estados básicos del sistema"""
@@ -3250,6 +4234,10 @@ if __name__ == '__main__':
             print("🔌 Conectando a Supabase...")
             db.engine.connect()
             print("✅ Conexión a base de datos exitosa")
+            
+            # Ejecutar migración de email verificación
+            print("📧 Verificando migración de verificación de email...")
+            ejecutar_migracion_email_verificacion()
             
             # Crear tablas si no existen
             print("📦 Verificando tablas...")

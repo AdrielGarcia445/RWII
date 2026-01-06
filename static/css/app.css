@@ -1072,6 +1072,20 @@ body {
     margin-top: 2px;
 }
 
+/* Page header con acciones */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 18px;
+}
+
+.header-actions {
+    display: flex;
+    gap: 8px;
+}
+
 /* Responsivo landing */
 
 @media (max-width: 880px) {
@@ -1095,5 +1109,14 @@ body {
     .public-hero-buttons a {
         flex: 1 1 auto;
         justify-content: center;
+    }
+    
+    .page-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .header-actions {
+        margin-top: 12px;
     }
 }
